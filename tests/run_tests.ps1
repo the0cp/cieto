@@ -37,6 +37,8 @@ Set CIETO_EXEC explicitly, for example:
 }
 
 $cietoExec = (Resolve-Path -LiteralPath $cietoExec).Path
+$cietoArgs = $env:CIETO_ARGS
+$compareArgs = $env:CIETO_COMPARE_ARGS
 
 function Show-CapturedOutput {
     param(
@@ -66,6 +68,63 @@ function Show-CapturedOutput {
         }
 }
 
+function Invoke-CietoScript {
+    param(
+        [string]$TestName,
+        [string]$ArgsText,
+        [string]$StdoutPath,
+        [string]$StderrPath
+    )
+
+    $cmdExec = $env:ComSpec
+    if ([string]::IsNullOrWhiteSpace($cmdExec)) {
+        $cmdExec = "cmd.exe"
+    }
+
+    $argText = ""
+    if (-not [string]::IsNullOrWhiteSpace($ArgsText)) {
+        $argText = " $ArgsText"
+    }
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $cmdExec
+    $startInfo.Arguments = '/d /s /c ""{0}"{1} "{2}" > "{3}" 2> "{4}""' -f `
+        $cietoExec, `
+        $argText, `
+        $TestName, `
+        $StdoutPath, `
+        $StderrPath
+    $startInfo.WorkingDirectory = $PSScriptRoot
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+
+    [void]$process.Start()
+
+    $finished = $process.WaitForExit($timeoutSec * 1000)
+
+    if (-not $finished) {
+        try {
+            $process.Kill()
+        }
+        catch {
+            # The process may already have exited.
+        }
+
+        $process.WaitForExit()
+    }
+
+    # Wait once more so redirected output is completely flushed.
+    $process.WaitForExit()
+
+    return @{
+        Finished = $finished
+        ExitCode = $process.ExitCode
+    }
+}
+
 $testFiles = Get-ChildItem `
     -LiteralPath $PSScriptRoot `
     -Filter "test_*.cies" |
@@ -80,6 +139,12 @@ $timeouts = 0
 
 Write-Host "Starting tests..."
 Write-Host "CIETO_EXEC: $cietoExec"
+if (-not [string]::IsNullOrWhiteSpace($cietoArgs)) {
+    Write-Host "CIETO_ARGS: $cietoArgs"
+}
+if (-not [string]::IsNullOrWhiteSpace($compareArgs)) {
+    Write-Host "CIETO_COMPARE_ARGS: $compareArgs"
+}
 Write-Host "TIMEOUT_SEC: $timeoutSec"
 Write-Host ""
 
@@ -92,41 +157,17 @@ foreach ($test in $testFiles) {
 
     $stdoutFile = "$temporaryBase.stdout.log"
     $stderrFile = "$temporaryBase.stderr.log"
+    $compareStdoutFile = "$temporaryBase.compare.stdout.log"
+    $compareStderrFile = "$temporaryBase.compare.stderr.log"
 
     try {
-        $cmdExec = $env:ComSpec
-        if ([string]::IsNullOrWhiteSpace($cmdExec)) {
-            $cmdExec = "cmd.exe"
-        }
+        $run = Invoke-CietoScript `
+            -TestName $test.Name `
+            -ArgsText $cietoArgs `
+            -StdoutPath $stdoutFile `
+            -StderrPath $stderrFile
 
-        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-        $startInfo.FileName = $cmdExec
-        $startInfo.Arguments = '/d /s /c ""{0}" "{1}" > "{2}" 2> "{3}""' -f `
-            $cietoExec, `
-            $test.Name, `
-            $stdoutFile, `
-            $stderrFile
-        $startInfo.WorkingDirectory = $PSScriptRoot
-        $startInfo.UseShellExecute = $false
-        $startInfo.CreateNoWindow = $true
-
-        $process = New-Object System.Diagnostics.Process
-        $process.StartInfo = $startInfo
-
-        [void]$process.Start()
-
-        $finished = $process.WaitForExit($timeoutSec * 1000)
-
-        if (-not $finished) {
-            try {
-                $process.Kill()
-            }
-            catch {
-                # The process may already have exited.
-            }
-
-            $process.WaitForExit()
-
+        if (-not $run.Finished) {
             Write-Host "[TIMEOUT]"
             Write-Host "Timed out after $timeoutSec seconds."
 
@@ -139,10 +180,50 @@ foreach ($test in $testFiles) {
             continue
         }
 
-        # Wait once more so redirected output is completely flushed.
-        $process.WaitForExit()
+        if (-not [string]::IsNullOrWhiteSpace($compareArgs)) {
+            $compareRun = Invoke-CietoScript `
+                -TestName $test.Name `
+                -ArgsText $compareArgs `
+                -StdoutPath $compareStdoutFile `
+                -StderrPath $compareStderrFile
 
-        $exitCode = $process.ExitCode
+            if (-not $compareRun.Finished) {
+                Write-Host "[TIMEOUT]"
+                Write-Host "Compare run timed out after $timeoutSec seconds."
+
+                Show-CapturedOutput `
+                    -StdoutPath $compareStdoutFile `
+                    -StderrPath $compareStderrFile
+
+                $timeouts++
+                $failed++
+                continue
+            }
+
+            $sameExit = $run.ExitCode -eq $compareRun.ExitCode
+            $sameStdout = (Get-Content -LiteralPath $stdoutFile -Raw) -eq `
+                (Get-Content -LiteralPath $compareStdoutFile -Raw)
+            $sameStderr = (Get-Content -LiteralPath $stderrFile -Raw) -eq `
+                (Get-Content -LiteralPath $compareStderrFile -Raw)
+
+            if (-not ($sameExit -and $sameStdout -and $sameStderr)) {
+                Write-Host "[DIFF]"
+                Write-Host "Exit: base=$($run.ExitCode), compare=$($compareRun.ExitCode)"
+                Write-Host "Base output:"
+                Show-CapturedOutput `
+                    -StdoutPath $stdoutFile `
+                    -StderrPath $stderrFile
+                Write-Host "Compare output:"
+                Show-CapturedOutput `
+                    -StdoutPath $compareStdoutFile `
+                    -StderrPath $compareStderrFile
+
+                $failed++
+                continue
+            }
+        }
+
+        $exitCode = $run.ExitCode
 
         if ($exitCode -eq 0) {
             Write-Host "[PASS]"
@@ -174,7 +255,7 @@ foreach ($test in $testFiles) {
     }
     finally {
         Remove-Item `
-            -LiteralPath $stdoutFile, $stderrFile `
+            -LiteralPath $stdoutFile, $stderrFile, $compareStdoutFile, $compareStderrFile `
             -Force `
             -ErrorAction SilentlyContinue
     }

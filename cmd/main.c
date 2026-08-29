@@ -19,6 +19,7 @@ static void printHelp(const char* programName){
     printf("  %s run <file.cies> [args...] Run a script\n", programName);
     printf("  %s --no-opt <file.cies> [args...] Run a script without compiler optimizations\n", programName);
     printf("  %s --dump, -d <file.cies>   Compile and dump bytecode\n", programName);
+    printf("  %s --no-opt --dump <file.cies> Compile and dump without compiler optimizations\n", programName);
     printf("  %s --help                  Show this help message\n", programName);
     printf("  %s --version               Show version information\n", programName);
     printf("\n");
@@ -46,26 +47,35 @@ int main(int argc, const char* argv[]){
         initVM(&vm, 0, NULL);
         repl(&vm);
     }else{
-        if(strcmp(argv[1], "--dump") == 0 || strcmp(argv[1], "-d") == 0){
-            if(argc != 3){
-                printHelp(argv[0]);
-                return 64;
-            }
-
-            initVM(&vm, 0, NULL);
-
-            int status = dumpScript(&vm, argv[2]);
-
-            freeVM(&vm);
-            return status;
-        }
-
         int scriptArgsSt = 1;
         bool noOpt = false;
 
         if(strcmp(argv[scriptArgsSt], "--no-opt") == 0){
             noOpt = true;
             scriptArgsSt++;
+        }
+
+        CompileOpts opts = {false};
+
+        if(scriptArgsSt < argc && (strcmp(argv[scriptArgsSt], "--dump") == 0 || strcmp(argv[scriptArgsSt], "-d") == 0)){
+            scriptArgsSt++;
+
+            if(scriptArgsSt < argc && strcmp(argv[scriptArgsSt], "--no-opt") == 0){
+                noOpt = true;
+                scriptArgsSt++;
+            }
+
+            if(scriptArgsSt + 1 != argc){
+                printHelp(argv[0]);
+                return 64;
+            }
+
+            initVM(&vm, 0, NULL);
+
+            int status = dumpScriptWithOpts(&vm, argv[scriptArgsSt], noOpt ? &opts : NULL);
+
+            freeVM(&vm);
+            return status;
         }
 
         if(scriptArgsSt < argc && strcmp(argv[scriptArgsSt], "run") == 0){
@@ -84,7 +94,6 @@ int main(int argc, const char* argv[]){
         }
 
         initVM(&vm, argc - scriptArgsSt, argv + scriptArgsSt);
-        CompileOpts opts = {false};
         runScriptWithOpts(&vm, argv[scriptArgsSt], noOpt ? &opts : NULL);
     }
     

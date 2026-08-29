@@ -88,9 +88,13 @@ void buildScript(VM* vm, const char* path){
 }
 
 int dumpScript(VM* vm, const char* path){
+    return dumpScriptWithOpts(vm, path, NULL);
+}
+
+int dumpScriptWithOpts(VM* vm, const char* path, const CompileOpts* opts){
     char* source = readScript(path);
 
-    ObjectFunc* func = compile(vm, source, path);
+    ObjectFunc* func = compileWithOpts(vm, source, path, opts);
 
     free(source);
 

@@ -179,6 +179,19 @@ if(BUILD_TESTING)
         set_tests_properties(cieto_script_tests PROPERTIES
             ENVIRONMENT "CIETO_EXEC=$<TARGET_FILE:cieto>;TIMEOUT_SEC=60"
         )
+
+        add_test(
+            NAME cieto_script_tests_no_opt
+            COMMAND
+                "${CIETO_POWERSHELL_EXECUTABLE}"
+                -NoProfile
+                -ExecutionPolicy Bypass
+                -File "${CMAKE_SOURCE_DIR}/tests/run_tests.ps1"
+        )
+
+        set_tests_properties(cieto_script_tests_no_opt PROPERTIES
+            ENVIRONMENT "CIETO_EXEC=$<TARGET_FILE:cieto>;TIMEOUT_SEC=60;CIETO_COMPARE_ARGS=--no-opt"
+        )
     else()
         find_program(
             CIETO_BASH_EXECUTABLE
@@ -198,11 +211,25 @@ if(BUILD_TESTING)
                 "60"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/tests"
         )
+
+        add_test(
+            NAME cieto_script_tests_no_opt
+            COMMAND
+                "${CIETO_BASH_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/run_tests.sh"
+                "$<TARGET_FILE:cieto>"
+                "60"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/tests"
+        )
+
+        set_tests_properties(cieto_script_tests_no_opt PROPERTIES
+            ENVIRONMENT "CIETO_COMPARE_ARGS=--no-opt"
+        )
     endif()
 
     add_test(
-        NAME cieto_script_tests_no_opt
-        COMMAND $<TARGET_FILE:cieto> --no-opt "${CMAKE_SOURCE_DIR}/tests/test_operators.cies"
+        NAME cieto_dump_no_opt
+        COMMAND $<TARGET_FILE:cieto> --no-opt --dump "${CMAKE_SOURCE_DIR}/tests/test_constant_folding.cies"
     )
 
     add_test(
