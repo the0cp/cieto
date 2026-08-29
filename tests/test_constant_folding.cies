@@ -1,0 +1,60 @@
+import "assert.cies";
+
+# Arithmetic
+assert.eq(1 + 2, 3, "Fold addition");
+assert.eq(5 - 8, -3, "Fold subtraction");
+assert.eq(6 * 7, 42, "Fold multiplication");
+assert.eq(9 / 2, 4.5, "Fold division");
+assert.eq(10 % 4, 2, "Fold modulo");
+
+# Number forms
+assert.eq(-2 + 5, 3, "Fold negative number");
+assert.eq(0 - 3, -3, "Fold zero operand");
+assert.eq(1.25 + 2.5, 3.75, "Fold decimal numbers");
+
+# Precedence and grouping
+assert.eq(1 + 2 * 3, 7, "Fold precedence");
+assert.eq((1 + 2) * 3, 9, "Fold grouping");
+
+# Comparisons
+assert.eq(1 == 1, true, "Fold equality true");
+assert.eq(1 == 2, false, "Fold equality false");
+assert.eq(1 != 2, true, "Fold inequality true");
+assert.eq(1 != 1, false, "Fold inequality false");
+assert.eq(3 > 2, true, "Fold greater true");
+assert.eq(2 > 3, false, "Fold greater false");
+assert.eq(2 < 3, true, "Fold less true");
+assert.eq(3 < 2, false, "Fold less false");
+assert.eq(3 >= 3, true, "Fold greater equal true");
+assert.eq(2 >= 3, false, "Fold greater equal false");
+assert.eq(2 <= 2, true, "Fold less equal true");
+assert.eq(3 <= 2, false, "Fold less equal false");
+
+# Mixed expressions stay correct
+var x = 10;
+assert.eq(x + 2 * 3, 16, "Fold literal side in mixed expression");
+assert.eq((x - 4) * 2, 12, "Keep variable expression semantics");
+
+# Do not fold divide/modulo by zero into compile-time behavior.
+assert.ok(true or (1 / 0 == 0), "Keep short-circuited division by zero safe");
+assert.ok(true or (1 % 0 == 0), "Keep short-circuited modulo by zero safe");
+
+# Folded values in surrounding syntax
+if (2 < 3) {
+    assert.ok(true, "Folded comparison in if");
+} else {
+    assert.ok(false, "Folded comparison in if");
+}
+
+assert.eq(1 < 2 ? "yes" : "no", "yes", "Folded comparison in ternary");
+
+func id(v) {
+    return v;
+}
+
+func foldedReturn() {
+    return 8 * 5;
+}
+
+assert.eq(id(6 * 7), 42, "Folded expression as argument");
+assert.eq(foldedReturn(), 40, "Folded expression as return value");

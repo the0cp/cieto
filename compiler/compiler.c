@@ -33,7 +33,14 @@ typedef struct{
     Precedence precedence;  // Precedence of the operator
 }ParseRule;
 
+typedef enum{
+    FOLD_NO,
+    FOLD_OK,
+    FOLD_RUNTIME_ERR,
+}FoldRes;
+
 static void initExpr(ExprDesc* expr, ExprType type, int index);
+static FoldRes tryFoldNumBinary(TokenType op, double left, double right, ExprDesc* result);
 static int emitInstruction(Compiler* compiler, Instruction instruction);
 static CompileOpts defaultCompileOpts(void);
 
@@ -147,6 +154,57 @@ static void initExpr(ExprDesc* expr, ExprType type, int index){
     expr->data.loc.aux = 0;
     expr->tJmp = -1;
     expr->fJmp = -1;
+}
+
+static FoldRes tryFoldNumBinary(TokenType op, double left, double right, ExprDesc* result){
+    switch(op){
+        case TOKEN_PLUS:
+            initExpr(result, EXPR_NUM, 0);
+            result->data.num = left + right;
+            return FOLD_OK;
+        case TOKEN_MINUS:
+            initExpr(result, EXPR_NUM, 0);
+            result->data.num = left - right;
+            return FOLD_OK;
+        case TOKEN_STAR:
+            initExpr(result, EXPR_NUM, 0);
+            result->data.num = left * right;
+            return FOLD_OK;
+        case TOKEN_SLASH:
+            if(right == 0){
+                return FOLD_RUNTIME_ERR;
+            }
+            initExpr(result, EXPR_NUM, 0);
+            result->data.num = left / right;
+            return FOLD_OK;
+        case TOKEN_PERCENT:
+            if(right == 0){
+                return FOLD_RUNTIME_ERR;
+            }
+            initExpr(result, EXPR_NUM, 0);
+            result->data.num = fmod(left, right);
+            return FOLD_OK;
+        case TOKEN_EQUAL:
+            initExpr(result, left == right ? EXPR_TRUE : EXPR_FALSE, 0);
+            return FOLD_OK;
+        case TOKEN_NOT_EQUAL:
+            initExpr(result, left != right ? EXPR_TRUE : EXPR_FALSE, 0);
+            return FOLD_OK;
+        case TOKEN_GREATER:
+            initExpr(result, left > right ? EXPR_TRUE : EXPR_FALSE, 0);
+            return FOLD_OK;
+        case TOKEN_LESS:
+            initExpr(result, left < right ? EXPR_TRUE : EXPR_FALSE, 0);
+            return FOLD_OK;
+        case TOKEN_GREATER_EQUAL:
+            initExpr(result, left >= right ? EXPR_TRUE : EXPR_FALSE, 0);
+            return FOLD_OK;
+        case TOKEN_LESS_EQUAL:
+            initExpr(result, left <= right ? EXPR_TRUE : EXPR_FALSE, 0);
+            return FOLD_OK;
+        default:
+            return FOLD_NO;
+    }
 }
 
 static int emitInstruction(Compiler* compiler, Instruction instruction){
@@ -1864,47 +1922,14 @@ static void handleBinary(Compiler* compiler, ExprDesc* expr, bool canAssign){
     ParseRule* rule = getRule(type);
 
     ExprDesc right;
-    parsePrecedence(compiler, &right, (Precedence)(rule->precedence + 1));  // parse the right-hand side, parse only if precedence is higher
-    // parse the right-hand side, parse only if precedence is higher
+    parsePrecedence(compiler, &right, (Precedence)(rule->precedence + 1));  // parse the right-hand side only if precedence is higher
 
     if(compiler->opts.foldConst && expr->type == EXPR_NUM && right.type == EXPR_NUM){
-        // constant folding for binary operations with number literals
-        switch(type){
-            case TOKEN_PLUS: expr->data.num += right.data.num; return;
-            case TOKEN_MINUS: expr->data.num -= right.data.num; return;
-            case TOKEN_STAR: expr->data.num *= right.data.num; return;
-            case TOKEN_SLASH:
-                if(right.data.num != 0){
-                    expr->data.num /= right.data.num;
-                    return;
-                }
-                break;  // Division by zero, do not fold
-            case TOKEN_PERCENT:
-                if(right.data.num != 0){
-                    expr->data.num = fmod(expr->data.num, right.data.num);
-                    return;
-                }
-                break; // Modulo by zero, do not fold
-            case TOKEN_EQUAL:
-                initExpr(expr, expr->data.num == right.data.num ? EXPR_TRUE : EXPR_FALSE, 0);
-                return;
-            case TOKEN_NOT_EQUAL:
-                initExpr(expr, expr->data.num != right.data.num ? EXPR_TRUE : EXPR_FALSE, 0);
-                return;
-            case TOKEN_GREATER:
-                initExpr(expr, expr->data.num > right.data.num ? EXPR_TRUE : EXPR_FALSE, 0);
-                return;
-            case TOKEN_LESS:
-                initExpr(expr, expr->data.num < right.data.num ? EXPR_TRUE : EXPR_FALSE, 0);
-                return;
-            case TOKEN_GREATER_EQUAL:
-                initExpr(expr, expr->data.num >= right.data.num ? EXPR_TRUE : EXPR_FALSE, 0);
-                return;
-            case TOKEN_LESS_EQUAL:
-                initExpr(expr, expr->data.num <= right.data.num ? EXPR_TRUE : EXPR_FALSE, 0);
-                return;
-            default:
-                break;
+        ExprDesc folded;
+        FoldRes res = tryFoldNumBinary(type, expr->data.num, right.data.num, &folded);
+        if(res == FOLD_OK){
+            *expr = folded;
+            return;
         }
     }
 
