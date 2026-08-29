@@ -8,3 +8,5 @@ tests/perf.data
 compile_commands.json
 perf.data
 perf.data.old
+ROADMAP.md
+/architecture
