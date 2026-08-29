@@ -221,6 +221,8 @@ or for release:
 ctest --preset release --output-on-failure
 ```
 
+CTest runs the script suite normally and compares the same scripts against `--no-opt`, so compiler optimizations must preserve stdout, stderr, and exit status.
+
 ## Usage
 
 Run the interactive REPL:
@@ -233,6 +235,19 @@ Run a script:
 
 ```sh
 cieto path/to/script.cies
+```
+
+Run a script without compiler optimizations:
+
+```sh
+cieto --no-opt path/to/script.cies
+```
+
+Dump bytecode:
+
+```sh
+cieto --dump path/to/script.cies
+cieto --no-opt --dump path/to/script.cies
 ```
 
 Cieto scripts can also be executed directly with a Unix shebang:

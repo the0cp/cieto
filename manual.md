@@ -1185,6 +1185,28 @@ gcc main.c -I /path/to/cieto/include -L /path/to/cieto/lib -lcieto -lm -o embed_
 
 For CMake users, see `examples/embedding/external-cmake/`.
 
+## Command Line
+
+Run a script:
+
+```sh
+cieto path/to/script.cies
+cieto run path/to/script.cies
+```
+
+Disable compiler optimizations for debugging or test comparison:
+
+```sh
+cieto --no-opt path/to/script.cies
+```
+
+Dump bytecode:
+
+```sh
+cieto --dump path/to/script.cies
+cieto --no-opt --dump path/to/script.cies
+```
+
 ## REPL
 
 ### Launch the REPL
