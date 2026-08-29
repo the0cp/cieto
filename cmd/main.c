@@ -17,6 +17,7 @@ static void printHelp(const char* programName){
     printf("  %s                         Start the REPL\n", programName);
     printf("  %s <file.cies> [args...]    Run a script\n", programName);
     printf("  %s run <file.cies> [args...] Run a script\n", programName);
+    printf("  %s --no-opt <file.cies> [args...] Run a script without compiler optimizations\n", programName);
     printf("  %s --dump, -d <file.cies>   Compile and dump bytecode\n", programName);
     printf("  %s --help                  Show this help message\n", programName);
     printf("  %s --version               Show version information\n", programName);
@@ -60,9 +61,20 @@ int main(int argc, const char* argv[]){
         }
 
         int scriptArgsSt = 1;
+        bool noOpt = false;
 
-        if(strcmp(argv[1], "run") == 0){
-            scriptArgsSt = 2;
+        if(strcmp(argv[scriptArgsSt], "--no-opt") == 0){
+            noOpt = true;
+            scriptArgsSt++;
+        }
+
+        if(scriptArgsSt < argc && strcmp(argv[scriptArgsSt], "run") == 0){
+            scriptArgsSt++;
+        }
+
+        if(scriptArgsSt < argc && strcmp(argv[scriptArgsSt], "--no-opt") == 0){
+            noOpt = true;
+            scriptArgsSt++;
         }
         
         if(scriptArgsSt >= argc){
@@ -72,7 +84,8 @@ int main(int argc, const char* argv[]){
         }
 
         initVM(&vm, argc - scriptArgsSt, argv + scriptArgsSt);
-        runScript(&vm, argv[scriptArgsSt]);
+        CompileOpts opts = {false};
+        runScriptWithOpts(&vm, argv[scriptArgsSt], noOpt ? &opts : NULL);
     }
     
     freeVM(&vm);

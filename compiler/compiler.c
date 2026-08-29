@@ -35,6 +35,7 @@ typedef struct{
 
 static void initExpr(ExprDesc* expr, ExprType type, int index);
 static int emitInstruction(Compiler* compiler, Instruction instruction);
+static CompileOpts defaultCompileOpts(void);
 
 static void expr2Reg(Compiler* compiler, ExprDesc* expr, int reg);
 static void expr2NextReg(Compiler* compiler, ExprDesc* expr);
@@ -156,6 +157,12 @@ static int emitInstruction(Compiler* compiler, Instruction instruction){
         compiler->parser.pre.line
     );
     return (int)(compiler->func->chunk.count - 1);
+}
+
+static CompileOpts defaultCompileOpts(void){
+    CompileOpts opts;
+    opts.foldConst = true;
+    return opts;
 }
 
 static int emitABC(Compiler* compiler, uint8_t op, uint8_t a, uint8_t b, uint8_t c){
@@ -394,6 +401,10 @@ static void initCompiler(Compiler* compiler, VM* vm, Compiler* enclosing, FuncTy
     compiler->vm = vm;
     compiler->globals = enclosing != NULL ? enclosing->globals : vm->curGlobal;   
     // point to defining module's global env for global access
+    if(enclosing != NULL){
+        compiler->opts = enclosing->opts;
+    }
+
     compiler->type = type;
     compiler->func = newFunction(vm);
     compiler->func->srcName = srcName;
@@ -436,6 +447,10 @@ static void initCompiler(Compiler* compiler, VM* vm, Compiler* enclosing, FuncTy
 }
 
 ObjectFunc* compile(VM* vm, const char* code, const char* srcNameStr){
+    return compileWithOpts(vm, code, srcNameStr, NULL);
+}
+
+ObjectFunc* compileWithOpts(VM* vm, const char* code, const char* srcNameStr, const CompileOpts* opts){
     Compiler* compiler = (Compiler*)reallocate(vm, NULL, 0, sizeof(Compiler));
     if(compiler == NULL){
         fprintf(stderr, "Not enough memory to compile.\n");
@@ -448,6 +463,7 @@ ObjectFunc* compile(VM* vm, const char* code, const char* srcNameStr){
     Compiler* enclosing = vm->compiler;
     compiler->vm = vm;
     compiler->func = NULL;
+    compiler->opts = opts != NULL ? *opts : defaultCompileOpts();
     vm->compiler = compiler;
     initCompiler(compiler, vm, enclosing, TYPE_SCRIPT, srcName);
     pop(vm);    // pop srcName
@@ -1819,7 +1835,7 @@ static void handleUnary(Compiler* compiler, ExprDesc* expr, bool canAssign){
 
     parsePrecedence(compiler, expr, PREC_UNARY);
 
-    if(type == TOKEN_MINUS && expr->type == EXPR_NUM){
+    if(compiler->opts.foldConst && type == TOKEN_MINUS && expr->type == EXPR_NUM){
         // constant folding for negative number literal
         expr->data.num = -expr->data.num;
         return;
@@ -1851,7 +1867,7 @@ static void handleBinary(Compiler* compiler, ExprDesc* expr, bool canAssign){
     parsePrecedence(compiler, &right, (Precedence)(rule->precedence + 1));  // parse the right-hand side, parse only if precedence is higher
     // parse the right-hand side, parse only if precedence is higher
 
-    if(expr->type == EXPR_NUM && right.type == EXPR_NUM){
+    if(compiler->opts.foldConst && expr->type == EXPR_NUM && right.type == EXPR_NUM){
         // constant folding for binary operations with number literals
         switch(type){
             case TOKEN_PLUS: expr->data.num += right.data.num; return;

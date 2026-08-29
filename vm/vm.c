@@ -265,10 +265,14 @@ static void closeUpvalues(VM* vm, Value* last){
 }
 
 InterpreterStatus interpret(VM* vm, const char* code, const char* srcName){
+    return interpretWithOpts(vm, code, srcName, NULL);
+}
+
+InterpreterStatus interpretWithOpts(VM* vm, const char* code, const char* srcName, const CompileOpts* opts){
     vm->lastError[0] = '\0';
 
     Value* stackBase = vm->stackTop;
-    ObjectFunc* func = compile(vm, code, srcName);
+    ObjectFunc* func = compileWithOpts(vm, code, srcName, opts);
 
     if(func == NULL){
         snprintf(vm->lastError, sizeof(vm->lastError), "Compilation failed.");

@@ -34,8 +34,12 @@ char* readScript(const char* path){
 }
 
 void runScript(VM* vm, const char* path) {
+    runScriptWithOpts(vm, path, NULL);
+}
+
+void runScriptWithOpts(VM* vm, const char* path, const CompileOpts* opts) {
     char* content = readScript(path);
-    InterpreterStatus status = interpret(vm, content, path);
+    InterpreterStatus status = interpretWithOpts(vm, content, path, opts);
     free(content);
 
     if(status == VM_COMPILE_ERROR) exit(EXIT_FAILURE);

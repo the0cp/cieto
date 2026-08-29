@@ -23,6 +23,10 @@ typedef struct GCPolicy GCPolicy;
 
 typedef void(*VMWriteFunc)(const char* text, size_t length, void* userData);
 
+typedef struct CompileOpts{
+    bool foldConst;
+}CompileOpts;
+
 typedef struct CallFrame{
     ObjectClosure* closure;
     Instruction* ip;
@@ -120,6 +124,12 @@ static bool isTruthy(Value value);
 static bool checkAccess(VM* vm, ObjectClass* instanceKlass, ObjectString* fieldName);
 
 InterpreterStatus interpret(VM* vm, const char* code, const char* srcName);
+InterpreterStatus interpretWithOpts(
+    VM* vm,
+    const char* code,
+    const char* srcName,
+    const CompileOpts* opts
+);
 InterpreterStatus vmCallValue(VM* vm, Value callee, int argCount, const Value* args, Value* result);
 static InterpreterStatus run(VM* vm);
 

@@ -9,6 +9,7 @@
 
 char* readScript(const char* path);
 void runScript(VM* vm, const char* path);
+void runScriptWithOpts(VM* vm, const char* path, const CompileOpts* opts);
 void buildScript(VM* vm, const char* path);
 int dumpScript(VM* vm, const char* path);
 

@@ -50,6 +50,7 @@ typedef struct Compiler{
     int freeReg;
     int maxRegSlots;
     FuncType type;
+    CompileOpts opts;
     ObjectFunc* func;
 }Compiler;
 
@@ -85,6 +86,7 @@ typedef struct{
 }ExprDesc;
 
 ObjectFunc* compile(VM* vm, const char* code, const char* srcName);
+ObjectFunc* compileWithOpts(VM* vm, const char* code, const char* srcName, const CompileOpts* opts);
 void markCompilerRoots(VM* vm);
 static ObjectFunc* stopCompiler(Compiler* compiler);
 static int emitJmp(Compiler* compiler);

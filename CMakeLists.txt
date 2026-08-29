@@ -201,6 +201,11 @@ if(BUILD_TESTING)
     endif()
 
     add_test(
+        NAME cieto_script_tests_no_opt
+        COMMAND $<TARGET_FILE:cieto> --no-opt "${CMAKE_SOURCE_DIR}/tests/test_operators.cies"
+    )
+
+    add_test(
         NAME cieto_embedding_basic
         COMMAND $<TARGET_FILE:cieto_embed_basic>
     )
