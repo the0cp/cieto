@@ -1,10 +1,10 @@
 import "assert.cies";
 
-$> true
-assert.eq(_exit_code, 0, "$> true exit code");
+$> exit 0
+assert.eq(_exit_code, 0, "$> exit 0 exit code");
 
-$> false
-assert.eq(_exit_code, 1, "$> false exit code");
+$> exit 7
+assert.eq(_exit_code, 7, "$> exit 7 exit code");
 
 $> echo cieto-system-test
 assert.eq(_exit_code, 0, "$> echo exit code");

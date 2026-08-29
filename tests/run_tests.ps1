@@ -94,14 +94,26 @@ foreach ($test in $testFiles) {
     $stderrFile = "$temporaryBase.stderr.log"
 
     try {
-        $process = Start-Process `
-            -FilePath $cietoExec `
-            -ArgumentList @($test.Name) `
-            -WorkingDirectory $PSScriptRoot `
-            -RedirectStandardOutput $stdoutFile `
-            -RedirectStandardError $stderrFile `
-            -NoNewWindow `
-            -PassThru
+        $cmdExec = $env:ComSpec
+        if ([string]::IsNullOrWhiteSpace($cmdExec)) {
+            $cmdExec = "cmd.exe"
+        }
+
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $cmdExec
+        $startInfo.Arguments = '/d /s /c ""{0}" "{1}" > "{2}" 2> "{3}""' -f `
+            $cietoExec, `
+            $test.Name, `
+            $stdoutFile, `
+            $stderrFile
+        $startInfo.WorkingDirectory = $PSScriptRoot
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+
+        [void]$process.Start()
 
         $finished = $process.WaitForExit($timeoutSec * 1000)
 

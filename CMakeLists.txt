@@ -159,38 +159,46 @@ include(CTest)
 if(BUILD_TESTING)
     if(WIN32)
         find_program(
-            CIETO_BASH_EXECUTABLE
-            NAMES bash.exe
-            PATHS
-                "$ENV{ProgramFiles}/Git/bin"
-                "$ENV{ProgramFiles}/Git/usr/bin"
-                "C:/Program Files/Git/bin"
-                "C:/Program Files/Git/usr/bin"
-                "C:/msys64/usr/bin"
-            NO_DEFAULT_PATH
+            CIETO_POWERSHELL_EXECUTABLE
+            NAMES powershell.exe powershell pwsh.exe pwsh
+        )
+
+        if(NOT CIETO_POWERSHELL_EXECUTABLE)
+            message(FATAL_ERROR "PowerShell was not found.")
+        endif()
+
+        add_test(
+            NAME cieto_script_tests
+            COMMAND
+                "${CIETO_POWERSHELL_EXECUTABLE}"
+                -NoProfile
+                -ExecutionPolicy Bypass
+                -File "${CMAKE_SOURCE_DIR}/tests/run_tests.ps1"
+        )
+
+        set_tests_properties(cieto_script_tests PROPERTIES
+            ENVIRONMENT "CIETO_EXEC=$<TARGET_FILE:cieto>;TIMEOUT_SEC=60"
         )
     else()
         find_program(
             CIETO_BASH_EXECUTABLE
             NAMES bash
         )
-    endif()
 
-    if(NOT CIETO_BASH_EXECUTABLE)
-        message(FATAL_ERROR
-            "Bash was not found. On Windows, install Git for Windows or MSYS2."
+        if(NOT CIETO_BASH_EXECUTABLE)
+            message(FATAL_ERROR "Bash was not found.")
+        endif()
+
+        add_test(
+            NAME cieto_script_tests
+            COMMAND
+                "${CIETO_BASH_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/run_tests.sh"
+                "$<TARGET_FILE:cieto>"
+                "60"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/tests"
         )
     endif()
-
-    add_test(
-        NAME cieto_script_tests
-        COMMAND
-            "${CIETO_BASH_EXECUTABLE}"
-            "${CMAKE_SOURCE_DIR}/tests/run_tests.sh"
-            "$<TARGET_FILE:cieto>"
-            "60"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/tests"
-    )
 
     add_test(
         NAME cieto_embedding_basic
