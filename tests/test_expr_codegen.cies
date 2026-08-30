@@ -1,0 +1,84 @@
+import "assert.cies";
+
+assert.eq(1 + 2 * 3 == 7, true, "Top-level computed equality");
+
+func directEq() {
+    assert.eq(1 + 2 * 3 == 7, true, "Function computed equality");
+}
+
+func exprRegs() {
+    assert.eq(1 + 2 * 3, 7, "Function expression keeps precedence");
+    assert.eq((1 + 2) * 3, 9, "Function expression keeps grouping");
+}
+
+func cmpBranches() {
+    var a = 2;
+    var b = 3;
+    var hits = 0;
+
+    if (a != b) {
+        hits = hits + 1;
+    } else {
+        hits = 99;
+    }
+
+    if (a != a) {
+        hits = 99;
+    } else {
+        hits = hits + 1;
+    }
+
+    if (b > a) {
+        hits = hits + 1;
+    } else {
+        hits = 99;
+    }
+
+    if (a > b) {
+        hits = 99;
+    } else {
+        hits = hits + 1;
+    }
+
+    if (b >= b) {
+        hits = hits + 1;
+    } else {
+        hits = 99;
+    }
+
+    if (a >= b) {
+        hits = 99;
+    } else {
+        hits = hits + 1;
+    }
+
+    assert.eq(hits, 6, "Comparison branches keep inverted ops");
+}
+
+func cmpLoops() {
+    var i = 0;
+    while (i != 3) {
+        i = i + 1;
+    }
+    assert.eq(i, 3, "While not-equal branch exits");
+
+    var down = 3;
+    while (down >= 1) {
+        down = down - 1;
+    }
+    assert.eq(down, 0, "While greater-equal branch exits");
+}
+
+func indexBeforeRightTbd() {
+    var data = {
+        "threshold": 1048576
+    };
+
+    assert.eq(data["threshold"] == 1024 * 1024, true, "Index key survives right relocatable expression");
+}
+
+directEq();
+exprRegs();
+cmpBranches();
+cmpLoops();
+indexBeforeRightTbd();

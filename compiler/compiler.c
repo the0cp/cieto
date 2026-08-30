@@ -38,6 +38,7 @@ static bool isPrimVal(const ExprDesc* expr, Value* val);
 static bool tryFoldUnary(TokenType op, const ExprDesc* expr, ExprDesc* result);
 static bool tryFoldNumBinary(TokenType op, double left, double right, ExprDesc* result);
 static bool tryFoldEq(TokenType op, const ExprDesc* left, const ExprDesc* right, ExprDesc* result);
+static bool cmpJmp(Compiler* compiler, ExprDesc* expr, int* jmp);
 static int emitInstruction(Compiler* compiler, Instruction instruction);
 static CompileOpts defaultCompileOpts(void);
 
@@ -67,6 +68,7 @@ static void handleIndex(Compiler* compiler, ExprDesc* expr, bool canAssign);
 static void handleThis(Compiler* compiler, ExprDesc* expr, bool canAssign);
 static void handlePipe(Compiler* compiler, ExprDesc* expr, bool canAssign);
 
+static void freeRegs(Compiler* compiler, int cnt);
 static void addLocal(Compiler* compiler, Token name);
 static int resolveLocal(Compiler* compiler, Token* name);
 static int resolveUpvalue(Compiler* compiler, Token* name);
@@ -265,6 +267,51 @@ static bool tryFoldEq(TokenType op, const ExprDesc* left, const ExprDesc* right,
     return true;
 }
 
+static bool cmpJmp(Compiler* compiler, ExprDesc* expr, int* jmp){
+    if(expr->type != EXPR_REG){
+        return false;
+    }
+
+    int codeCnt = compiler->func->chunk.count;
+    if(codeCnt < 3){
+        return false;
+    }
+
+    Instruction instFalse = compiler->func->chunk.code[codeCnt - 1];
+    Instruction instTrue = compiler->func->chunk.code[codeCnt - 2];
+    Instruction instCmp = compiler->func->chunk.code[codeCnt - 3];
+
+    int targetReg = expr->data.loc.index;
+    if(
+        GET_OPCODE(instTrue) != OP_LOADBOOL ||
+        GET_ARG_A(instTrue) != targetReg ||
+        GET_ARG_B(instTrue) != 1 ||
+        GET_ARG_C(instTrue) != 1 ||
+        GET_OPCODE(instFalse) != OP_LOADBOOL ||
+        GET_ARG_A(instFalse) != targetReg ||
+        GET_ARG_B(instFalse) != 0 ||
+        GET_ARG_C(instFalse) != 0
+    ){
+        return false;
+    }
+
+    OpCode cmpOp = GET_OPCODE(instCmp);
+    if(cmpOp != OP_LT && cmpOp != OP_LE && cmpOp != OP_EQ){
+        return false;
+    }
+
+    compiler->func->chunk.count -= 2;
+    freeExpr(compiler, expr);
+
+    int argA = GET_ARG_A(instCmp);
+    int argB = GET_ARG_B(instCmp);
+    int argC = GET_ARG_C(instCmp);
+    compiler->func->chunk.code[codeCnt - 3] = CREATE_ABC(cmpOp, !argA, argB, argC);
+
+    *jmp = emitJmp(compiler);
+    return true;
+}
+
 static int emitInstruction(Compiler* compiler, Instruction instruction){
     writeChunk(
         compiler->vm, 
@@ -301,6 +348,26 @@ static int getFreeReg(Compiler* compiler){
     return compiler->freeReg;
 }
 
+static int firstTempReg(Compiler* compiler){
+    return compiler->localCnt > 0 ? compiler->locals[compiler->localCnt - 1].reg + 1 : 1;
+}
+
+static void setFreeReg(Compiler* compiler, int nextReg){
+    int minReg = firstTempReg(compiler);
+    if(nextReg < minReg){
+        nextReg = minReg;
+    }
+
+    compiler->freeReg = nextReg;
+    if(compiler->freeReg > compiler->maxRegSlots){
+        compiler->maxRegSlots = compiler->freeReg;
+    }
+
+    if(compiler->freeReg > REG_MAX){
+        errorAt(compiler, &compiler->parser.pre, "Register overflow.");
+    }
+}
+
 static void reserveReg(Compiler* compiler, int cnt){
     compiler->freeReg += cnt;
 
@@ -315,9 +382,21 @@ static void reserveReg(Compiler* compiler, int cnt){
 
 static void freeRegs(Compiler* compiler, int cnt){
     compiler->freeReg -= cnt;
-    int minReg = compiler->localCnt > 0 ? compiler->locals[compiler->localCnt - 1].reg + 1 : 1;
+    int minReg = firstTempReg(compiler);
     if(compiler->freeReg < minReg){
         compiler->freeReg = minReg;
+    }
+}
+
+static void freeExpr(Compiler* compiler, ExprDesc* expr){
+    if(expr->type != EXPR_REG){
+        return;
+    }
+
+    int reg = expr->data.loc.index;
+    if(reg >= firstTempReg(compiler) && reg == compiler->freeReg - 1){
+        freeRegs(compiler, 1);
+        expr->type = EXPR_VOID;
     }
 }
 
@@ -346,34 +425,38 @@ static void unplugExpr(Compiler* compiler, ExprDesc* expr){
             break;
         case EXPR_INDEX:
         {
-            int destReg = getFreeReg(compiler);
-            reserveReg(compiler, 1);
-
+            int objReg = expr->data.loc.index;
+            int keyReg = expr->data.loc.aux;
             emitABC(
                 compiler, 
                 OP_GET_INDEX, 
-                destReg, 
-                expr->data.loc.index, 
-                expr->data.loc.aux
+                objReg,
+                objReg,
+                keyReg
             );
+            ExprDesc key;
+            initExpr(&key, EXPR_REG, keyReg);
+            freeExpr(compiler, &key);
             expr->type = EXPR_REG;
-            expr->data.loc.index = destReg;
+            expr->data.loc.index = objReg;
             break;
         }
         case EXPR_PROP:
         {
-            int destReg = getFreeReg(compiler);
-            reserveReg(compiler, 1);
-
+            int objReg = expr->data.loc.index;
+            int keyReg = expr->data.loc.aux;
             emitABC(
                 compiler, 
                 OP_GET_PROPERTY, 
-                destReg, 
-                expr->data.loc.index, 
-                expr->data.loc.aux
+                objReg,
+                objReg,
+                keyReg
             );
+            ExprDesc key;
+            initExpr(&key, EXPR_REG, keyReg);
+            freeExpr(compiler, &key);
             expr->type = EXPR_REG;
-            expr->data.loc.index = destReg;
+            expr->data.loc.index = objReg;
             break;
         }
         case EXPR_CALL:
@@ -416,8 +499,12 @@ static void expr2Reg(Compiler* compiler, ExprDesc* expr,int reg){
         }
         case EXPR_LOCAL:
         case EXPR_REG:{
-            if(reg != expr->data.loc.index){
-                emitABC(compiler, OP_MOVE, reg, expr->data.loc.index, 0);
+            int srcReg = expr->data.loc.index;
+            if(reg != srcReg){
+                emitABC(compiler, OP_MOVE, reg, srcReg, 0);
+                ExprDesc srcExpr;
+                initExpr(&srcExpr, EXPR_REG, srcReg);
+                freeExpr(compiler, &srcExpr);
             }
             break;
         }
@@ -431,7 +518,13 @@ static void expr2Reg(Compiler* compiler, ExprDesc* expr,int reg){
 
 static void expr2NextReg(Compiler* compiler, ExprDesc* expr){
     unplugExpr(compiler, expr);
-    freeExpr(compiler, expr);
+    if(
+        expr->type == EXPR_REG &&
+        expr->data.loc.index >= firstTempReg(compiler) &&
+        expr->data.loc.index == compiler->freeReg - 1
+    ){
+        return;
+    }
     reserveReg(compiler, 1);
     expr2Reg(compiler, expr, compiler->freeReg - 1);
 }
@@ -450,6 +543,7 @@ static void storeVar(Compiler* compiler, ExprDesc* var, ExprDesc* val){
                 var->data.loc.index, 
                 0
             );
+            freeExpr(compiler, val);
             break;
         }
         case EXPR_GLOBAL:{
@@ -460,6 +554,7 @@ static void storeVar(Compiler* compiler, ExprDesc* var, ExprDesc* val){
                 val->data.loc.index, 
                 var->data.loc.index
             );
+            freeExpr(compiler, val);
             break;
         }
         case EXPR_INDEX:
@@ -471,6 +566,13 @@ static void storeVar(Compiler* compiler, ExprDesc* var, ExprDesc* val){
                 var->data.loc.aux, 
                 val->data.loc.index
             );
+            freeExpr(compiler, val);
+            ExprDesc key;
+            initExpr(&key, EXPR_REG, var->data.loc.aux);
+            freeExpr(compiler, &key);
+            ExprDesc obj;
+            initExpr(&obj, EXPR_REG, var->data.loc.index);
+            freeExpr(compiler, &obj);
             break;
         case EXPR_PROP:
             expr2NextReg(compiler, val);
@@ -481,35 +583,29 @@ static void storeVar(Compiler* compiler, ExprDesc* var, ExprDesc* val){
                 var->data.loc.aux, 
                 val->data.loc.index
             );
+            freeExpr(compiler, val);
+            ExprDesc propKey;
+            initExpr(&propKey, EXPR_REG, var->data.loc.aux);
+            freeExpr(compiler, &propKey);
+            ExprDesc propObj;
+            initExpr(&propObj, EXPR_REG, var->data.loc.index);
+            freeExpr(compiler, &propObj);
             break;
         default:
             errorAt(compiler, &compiler->parser.pre, "Invalid assignment target.");
             break;
     }
-
-    freeExpr(compiler, val);
 }
 
 static void emitBinaryOp(Compiler* compiler, OpCode op, ExprDesc* left, ExprDesc* right){
     expr2NextReg(compiler, left);
     expr2NextReg(compiler, right);
-    freeExpr(compiler, right);
-    freeExpr(compiler, left);
 
     int instructionIndex = emitABC(compiler, op, 0, left->data.loc.index, right->data.loc.index);
+    freeExpr(compiler, right);
+    freeExpr(compiler, left);
     left->type = EXPR_TBD;
     left->data.loc.index = instructionIndex;
-}
-
-static void freeExpr(Compiler* compiler, ExprDesc* expr){
-    if(expr->type == EXPR_TBD){
-        int minReg = compiler->localCnt > 0 ? compiler->locals[compiler->localCnt - 1].reg + 1 : 1;
-        if(expr->data.loc.index >= minReg){
-            if(expr->data.loc.index < compiler->freeReg){
-                freeRegs(compiler, 1);
-            }
-        }
-    }
 }
 
 static void initCompiler(Compiler* compiler, VM* vm, Compiler* enclosing, FuncType type, ObjectString* srcName){
@@ -828,20 +924,19 @@ static void classDecl(Compiler* compiler){
         consume(compiler, TOKEN_IDENTIFIER, "Expect field name.");
         
         int fieldNameIndex = identifierConst(compiler); 
-        reserveReg(compiler, 1); // reserve register for class instance
+        reserveReg(compiler, 1);
         int valReg = getFreeReg(compiler) - 1;
 
         if(match(compiler, TOKEN_ASSIGN)){
             ExprDesc initExpr;
             expression(compiler, &initExpr);
             expr2Reg(compiler, &initExpr, valReg);
-            freeExpr(compiler, &initExpr);
         }else{
             emitABC(compiler, OP_LOADNULL, valReg, 0, 0);
         }
 
-        reserveReg(compiler, 1); // reserve register for field value
         int keyReg = getFreeReg(compiler);
+        reserveReg(compiler, 1);
         emitABx(compiler, OP_LOADK, keyReg, fieldNameIndex);
         
         emitABC(compiler, OP_FIELD, classReg, keyReg, valReg);
@@ -1051,8 +1146,8 @@ static void printStmt(Compiler* compiler){
     expression(compiler, &expr);
     expr2NextReg(compiler, &expr);
     emitABC(compiler, OP_PRINT, expr.data.loc.index, 0, 0);
-    consume(compiler, TOKEN_SEMICOLON, "Expect ';' after a expression");
     freeExpr(compiler, &expr);
+    consume(compiler, TOKEN_SEMICOLON, "Expect ';' after a expression");
 }
 
 static void ifStmt(Compiler* compiler){
@@ -1074,38 +1169,14 @@ static void ifStmt(Compiler* compiler){
     expression(compiler, &condition);
     consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 
-    expr2NextReg(compiler, &condition);
-    int condReg = condition.data.loc.index;
-    int elseJmp = -1;
-
-    int codeCnt = compiler->func->chunk.count;
-    if(codeCnt >= 3){
-        Instruction instFalse = compiler->func->chunk.code[codeCnt - 1];   // loadbool false
-        Instruction instTrue = compiler->func->chunk.code[codeCnt - 2];    // loadbool true
-        Instruction instCmp = compiler->func->chunk.code[codeCnt - 3];     // jump if false
-
-        if(GET_OPCODE(instFalse) == OP_LOADBOOL && GET_OPCODE(instTrue) == OP_LOADBOOL){
-            OpCode cmpOp = GET_OPCODE(instCmp);
-            if(cmpOp == OP_LT || cmpOp == OP_LE || cmpOp == OP_EQ){
-                compiler->func->chunk.count -= 2;
-                freeRegs(compiler, 1);  // free targetReg
-
-                // expect False
-                int argA = GET_ARG_A(instCmp);
-                int argB = GET_ARG_B(instCmp);
-                int argC = GET_ARG_C(instCmp);
-                compiler->func->chunk.code[codeCnt - 3] = CREATE_ABC(cmpOp, 0, argB, argC);
-                
-                elseJmp = emitJmp(compiler);
-            }
-        }
-    }
-
-    if(elseJmp == -1){
+    int elseJmp;
+    if(!cmpJmp(compiler, &condition, &elseJmp)){
+        expr2NextReg(compiler, &condition);
+        int condReg = condition.data.loc.index;
         elseJmp = emitJmpIfFalse(compiler, condReg);
+        freeExpr(compiler, &condition);
     }
 
-    freeExpr(compiler, &condition);
     stmt(compiler);
     if(match(compiler, TOKEN_ELSE)){
         int endJmp = emitJmp(compiler);
@@ -1148,39 +1219,15 @@ static void whileStmt(Compiler* compiler){
     ExprDesc condition;
     expression(compiler, &condition);
     consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
-    expr2NextReg(compiler, &condition);
 
-    int condReg = condition.data.loc.index;
-
-    int exitJmp = -1;
-
-    int codeCnt = compiler->func->chunk.count;
-    if(codeCnt >= 3){
-        Instruction instFalse = compiler->func->chunk.code[codeCnt - 1];   // loadbool false
-        Instruction instTrue = compiler->func->chunk.code[codeCnt - 2];    // loadbool true
-        Instruction instCmp = compiler->func->chunk.code[codeCnt - 3];     // jump if false
-
-        if(GET_OPCODE(instFalse) == OP_LOADBOOL && GET_OPCODE(instTrue) == OP_LOADBOOL){
-            OpCode cmpOp = GET_OPCODE(instCmp);
-            if(cmpOp == OP_LT || cmpOp == OP_LE || cmpOp == OP_EQ){
-                compiler->func->chunk.count -= 2;
-                freeRegs(compiler, 1);  // free targetReg
-
-                // expect False
-                int argB = GET_ARG_B(instCmp);
-                int argC = GET_ARG_C(instCmp);
-                compiler->func->chunk.code[codeCnt - 3] = CREATE_ABC(cmpOp, 0, argB, argC);
-                
-                exitJmp = emitJmp(compiler);
-            }
-        }
-    }
-
-    if(exitJmp == -1){
+    int exitJmp;
+    if(!cmpJmp(compiler, &condition, &exitJmp)){
+        expr2NextReg(compiler, &condition);
+        int condReg = condition.data.loc.index;
         exitJmp = emitJmpIfFalse(compiler, condReg);
+        freeExpr(compiler, &condition);
     }
 
-    freeExpr(compiler, &condition);
     stmt(compiler);
 
     emitLoop(compiler, loopStart);
@@ -1275,10 +1322,12 @@ static void forStmt(Compiler* compiler){
             ExprDesc condition;
             expression(compiler, &condition);
             consume(compiler, TOKEN_SEMICOLON, "Expect ';' after loop condition.");
-    
-            expr2NextReg(compiler, &condition);
-            exitJmp = emitJmpIfFalse(compiler, condition.data.loc.index);
-            freeExpr(compiler, &condition);
+
+            if(!cmpJmp(compiler, &condition, &exitJmp)){
+                expr2NextReg(compiler, &condition);
+                exitJmp = emitJmpIfFalse(compiler, condition.data.loc.index);
+                freeExpr(compiler, &condition);
+            }
         }
     }
     
@@ -1565,7 +1614,6 @@ static void parsePrecedence(Compiler* compiler, ExprDesc* expr, Precedence prece
             );
 
             freeExpr(compiler, &valExpr);
-
             storeVar(compiler, expr, &augendExpr);
             *expr = augendExpr;
         }
@@ -1586,7 +1634,6 @@ static void parsePrecedence(Compiler* compiler, ExprDesc* expr, Precedence prece
             );
 
             freeExpr(compiler, &valExpr);
-
             storeVar(compiler, expr, &minuendExpr);
             *expr = minuendExpr;
         }
@@ -1960,26 +2007,35 @@ static void handleUnary(Compiler* compiler, ExprDesc* expr, bool canAssign){
     }
 
     expr2NextReg(compiler, expr);
-    freeExpr(compiler, expr);
-    reserveReg(compiler, 1);
-
-    int targetReg = getFreeReg(compiler) - 1;
+    int reg = expr->data.loc.index;
 
     switch(type){
         case TOKEN_MINUS:
-            emitABC(compiler, OP_NEG, targetReg, expr->data.loc.index, 0);
+            emitABC(compiler, OP_NEG, reg, reg, 0);
             break;
         case TOKEN_NOT:
-            emitABC(compiler, OP_NOT, targetReg, expr->data.loc.index, 0);
+            emitABC(compiler, OP_NOT, reg, reg, 0);
             break;
         default: return;  // Should not reach here
     }
-    initExpr(expr, EXPR_REG, targetReg);
+    initExpr(expr, EXPR_REG, reg);
 }
 
 static void handleBinary(Compiler* compiler, ExprDesc* expr, bool canAssign){
     TokenType type = compiler->parser.pre.type;
     ParseRule* rule = getRule(type);
+
+    switch(expr->type){
+        case EXPR_NULL:
+        case EXPR_TRUE:
+        case EXPR_FALSE:
+        case EXPR_K:
+        case EXPR_NUM:
+            break;
+        default:
+            expr2NextReg(compiler, expr);
+            break;
+    }
 
     ExprDesc right;
     parsePrecedence(compiler, &right, (Precedence)(rule->precedence + 1));  // parse the right-hand side only if precedence is higher
@@ -2026,16 +2082,14 @@ static void handleBinary(Compiler* compiler, ExprDesc* expr, bool canAssign){
             
             expr2NextReg(compiler, expr);
             expr2NextReg(compiler, &right);
-            freeExpr(compiler, &right);
-            freeExpr(compiler, expr);
 
             emitABC(compiler, op, expectTrue, expr->data.loc.index, right.data.loc.index);
-            reserveReg(compiler, 1);
-            int targetReg = getFreeReg(compiler) - 1;
+            int targetReg = expr->data.loc.index;
             emitABC(compiler, OP_LOADBOOL, targetReg, 1, 1);
             // load true into targetReg, and jump over the next instruction
             emitABC(compiler, OP_LOADBOOL, targetReg, 0, 0);
             // load false into targetReg
+            freeExpr(compiler, &right);
             initExpr(expr, EXPR_REG, targetReg);
             break;
         }
@@ -2048,7 +2102,6 @@ static void handleTernary(Compiler* compiler, ExprDesc* expr, bool canAssign){
     int condReg = expr->data.loc.index;
 
     int elseJmp = emitJmpIfFalse(compiler, condReg);
-    freeExpr(compiler, expr);
     reserveReg(compiler, 1);
     int thenReg = getFreeReg(compiler) - 1;
 
@@ -2056,7 +2109,6 @@ static void handleTernary(Compiler* compiler, ExprDesc* expr, bool canAssign){
     expression(compiler, &thenExpr);
 
     expr2Reg(compiler, &thenExpr, thenReg);
-    freeExpr(compiler, &thenExpr);
 
     int endJmp = emitJmp(compiler);
     patchJump(compiler, elseJmp);
@@ -2067,7 +2119,6 @@ static void handleTernary(Compiler* compiler, ExprDesc* expr, bool canAssign){
     expression(compiler, &elseExpr);
 
     expr2Reg(compiler, &elseExpr, thenReg);
-    freeExpr(compiler, &elseExpr);
 
     patchJump(compiler, endJmp);
     initExpr(expr, EXPR_REG, thenReg);
@@ -2156,9 +2207,8 @@ static void handleString(Compiler* compiler, ExprDesc* expr, bool canAssign){
             if(partCnt == 0){
                 if(tmpExpr.data.loc.index != resReg){
                     emitABC(compiler, OP_MOVE, resReg, tmpExpr.data.loc.index, 0);
+                    freeExpr(compiler, &tmpExpr);
                 }
-                freeExpr(compiler, &tmpExpr);
-                reserveReg(compiler, 1);
             }else{
                 emitABC(compiler, OP_ADD, resReg, resReg, tmpExpr.data.loc.index);
                 freeExpr(compiler, &tmpExpr);
@@ -2184,7 +2234,6 @@ static void handleAnd(Compiler* compiler, ExprDesc* expr, bool canAssign){
     ExprDesc right;
     parsePrecedence(compiler, &right, PREC_AND);
     expr2Reg(compiler, &right, expr->data.loc.index);
-    freeExpr(compiler, &right);
     patchJump(compiler, endJmp);
 }
 
@@ -2194,7 +2243,6 @@ static void handleOr(Compiler* compiler, ExprDesc* expr, bool canAssign){
     ExprDesc right;
     parsePrecedence(compiler, &right, PREC_OR);
     expr2Reg(compiler, &right, expr->data.loc.index);
-    freeExpr(compiler, &right);
     patchJump(compiler, endJmp);
 }
 
@@ -2217,8 +2265,7 @@ static int argList(Compiler* compiler, ExprDesc* func){
             int targetReg = funcReg + argCnt + 1;  
             // function is at funcReg, arguments start from funcReg + 1
             expr2Reg(compiler, &arg, targetReg);
-            freeExpr(compiler, &arg);
-            reserveReg(compiler, 1);
+            setFreeReg(compiler, targetReg + 1);
             argCnt++;
             if(argCnt >= 255){
                 errorAt(compiler, &compiler->parser.pre, "Cannot have more than 255 arguments.");
@@ -2249,19 +2296,17 @@ static void handlePipe(Compiler* compiler, ExprDesc* expr, bool canAssign){
     int funcReg = funcExpr.data.loc.index;
 
     int targetFuncReg = getFreeReg(compiler);
-    reserveReg(compiler, 1);
-
+    reserveReg(compiler, 2);
     int targetArgReg = targetFuncReg + 1;
 
     emitABC(compiler, OP_MOVE, targetFuncReg, funcReg, 0);
     emitABC(compiler, OP_MOVE, targetArgReg, argReg, 0);
 
     emitABC(compiler, OP_CALL, targetFuncReg, 2, 2);
+    emitABC(compiler, OP_MOVE, argReg, targetFuncReg, 0);
+    freeRegs(compiler, 3);
 
-    freeExpr(compiler, &funcExpr);
-    freeRegs(compiler, 2);
-
-    initExpr(expr, EXPR_REG, targetFuncReg);
+    initExpr(expr, EXPR_REG, argReg);
 }
 
 static void handleImport(Compiler* compiler, ExprDesc* expr, bool canAssign){
@@ -2324,8 +2369,8 @@ static void handleList(Compiler* compiler, ExprDesc* expr, bool canAssign){
             int countReg = countExpr.data.loc.index;
 
             emitABC(compiler, OP_FILL_LIST, listReg, itemReg, countReg);
-            freeExpr(compiler, &firstElem);
             freeExpr(compiler, &countExpr);
+            freeExpr(compiler, &firstElem);
 
             consume(compiler, TOKEN_RIGHT_BRACKET, "Expect ']' after list.");
             initExpr(expr, EXPR_REG, listReg);
@@ -2334,8 +2379,7 @@ static void handleList(Compiler* compiler, ExprDesc* expr, bool canAssign){
 
         int startReg = getFreeReg(compiler);
         expr2Reg(compiler, &firstElem, startReg);
-        reserveReg(compiler, 1);
-        freeExpr(compiler, &firstElem);
+        setFreeReg(compiler, startReg + 1);
 
         int elemCnt = 1;
         while(match(compiler, TOKEN_COMMA)){
@@ -2345,8 +2389,7 @@ static void handleList(Compiler* compiler, ExprDesc* expr, bool canAssign){
             ExprDesc elemExpr;
             expression(compiler, &elemExpr);
             expr2Reg(compiler, &elemExpr, startReg + elemCnt);
-            reserveReg(compiler, 1);
-            freeExpr(compiler, &elemExpr);
+            setFreeReg(compiler, startReg + elemCnt + 1);
             elemCnt++;
         }
 
@@ -2379,7 +2422,6 @@ static void handleIndex(Compiler* compiler, ExprDesc* expr, bool canAssign){
             isSlice = true;
             reserveReg(compiler, 3);  // reserve registers for start, end, step
             expr2Reg(compiler, &startExpr, baseReg);
-            freeExpr(compiler, &startExpr);
         }
     }
 
@@ -2394,7 +2436,6 @@ static void handleIndex(Compiler* compiler, ExprDesc* expr, bool canAssign){
             ExprDesc endExpr;
             expression(compiler, &endExpr);
             expr2Reg(compiler, &endExpr, endReg);
-            freeExpr(compiler, &endExpr);
         }
 
         if(match(compiler, TOKEN_COLON)){
@@ -2404,16 +2445,15 @@ static void handleIndex(Compiler* compiler, ExprDesc* expr, bool canAssign){
                 ExprDesc stepExpr;
                 expression(compiler, &stepExpr);
                 expr2Reg(compiler, &stepExpr, stepReg);
-                freeExpr(compiler, &stepExpr);
             }
         }else{  // no step
             emitABC(compiler, OP_LOADNULL, stepReg, 0, 0);
         }
 
         consume(compiler, TOKEN_RIGHT_BRACKET, "Expect ']' after slice.");
-        emitABC(compiler, OP_SLICE, baseReg, objReg, baseReg);
-        freeRegs(compiler, 2);  // free endReg and stepReg
-        initExpr(expr, EXPR_REG, baseReg);  // save slice result in baseReg
+        emitABC(compiler, OP_SLICE, objReg, objReg, baseReg);
+        freeRegs(compiler, 3);  // free startReg, endReg, and stepReg
+        initExpr(expr, EXPR_REG, objReg);
         return;
     }
 
@@ -2448,9 +2488,8 @@ static void handleMap(Compiler* compiler, ExprDesc* expr, bool canAssign){
 
             emitABC(compiler, OP_SET_INDEX, mapReg, keyReg, valReg);
             // reuse OP_SET_INDEX for setting map entries
-
-            freeExpr(compiler, &keyExpr);
             freeExpr(compiler, &valueExpr);
+            freeExpr(compiler, &keyExpr);
         }while(match(compiler, TOKEN_COMMA));
     }
     consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' after map.");

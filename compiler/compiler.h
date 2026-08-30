@@ -67,7 +67,7 @@ typedef enum{
     EXPR_INDEX,
     EXPR_PROP,
     EXPR_JMP,
-    EXPR_TBD,
+    EXPR_TBD,   // relocatable instruction result
     EXPR_REG,
     EXPR_CALL,
 }ExprType;
