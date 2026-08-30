@@ -1,0 +1,17 @@
+import "assert.cies";
+
+# Unary truthiness
+assert.eq(!true, false, "Fold not true");
+assert.eq(!false, true, "Fold not false");
+assert.eq(!null, true, "Fold not null");
+assert.eq(!0, true, "Fold not zero");
+assert.eq(!3, false, "Fold not nonzero number");
+
+# Primitive equality
+assert.eq(true == true, true, "Fold boolean equality true");
+assert.eq(true == false, false, "Fold boolean equality false");
+assert.eq(null == null, true, "Fold null equality");
+assert.eq(null == false, false, "Fold mixed primitive equality");
+assert.eq(true != false, true, "Fold boolean inequality true");
+assert.eq(false != false, false, "Fold boolean inequality false");
+assert.eq(null != 0, true, "Fold mixed primitive inequality");

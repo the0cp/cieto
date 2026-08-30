@@ -216,13 +216,6 @@ static void popGlobal(VM* vm){
     vm->curGlobal = vm->globalStack[--vm->globalCnt];
 }
 
-static bool isTruthy(Value value){
-    return !(IS_NULL(value) ||
-            (IS_BOOL(value) && !AS_BOOL(value)) ||
-            (IS_NUM(value) && AS_NUM(value) == 0));
-    // NULL is considered falsy
-}
-
 static bool isValidKey(Value key){
     if(IS_NUM(key)){
         double n = AS_NUM(key);

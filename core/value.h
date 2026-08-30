@@ -72,6 +72,7 @@ ObjectString* toString(VM* vm, Value value);
 void valueWrite(Value value, Writer* writer);
 
 ValueType getValueType(Value value);
+bool isTruthy(Value value);
 bool isEqual(Value a, Value b);
 
 #endif  // CIE_VALUE_H

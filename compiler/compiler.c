@@ -33,14 +33,11 @@ typedef struct{
     Precedence precedence;  // Precedence of the operator
 }ParseRule;
 
-typedef enum{
-    FOLD_NO,
-    FOLD_OK,
-    FOLD_RUNTIME_ERR,
-}FoldRes;
-
 static void initExpr(ExprDesc* expr, ExprType type, int index);
-static FoldRes tryFoldNumBinary(TokenType op, double left, double right, ExprDesc* result);
+static bool isPrimVal(const ExprDesc* expr, Value* val);
+static bool tryFoldUnary(TokenType op, const ExprDesc* expr, ExprDesc* result);
+static bool tryFoldNumBinary(TokenType op, double left, double right, ExprDesc* result);
+static bool tryFoldEq(TokenType op, const ExprDesc* left, const ExprDesc* right, ExprDesc* result);
 static int emitInstruction(Compiler* compiler, Instruction instruction);
 static CompileOpts defaultCompileOpts(void);
 
@@ -156,55 +153,116 @@ static void initExpr(ExprDesc* expr, ExprType type, int index){
     expr->fJmp = -1;
 }
 
-static FoldRes tryFoldNumBinary(TokenType op, double left, double right, ExprDesc* result){
+static bool isPrimVal(const ExprDesc* expr, Value* val){
+    switch(expr->type){
+        case EXPR_NULL:
+            *val = NULL_VAL;
+            return true;
+        case EXPR_TRUE:
+            *val = BOOL_VAL(true);
+            return true;
+        case EXPR_FALSE:
+            *val = BOOL_VAL(false);
+            return true;
+        case EXPR_NUM:
+            *val = NUM_VAL(expr->data.num);
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool tryFoldUnary(TokenType op, const ExprDesc* expr, ExprDesc* result){
+    switch(op){
+        case TOKEN_MINUS:
+            if(expr->type != EXPR_NUM){
+                return false;
+            }
+            initExpr(result, EXPR_NUM, 0);
+            result->data.num = -expr->data.num;
+            return true;
+        case TOKEN_NOT:{
+            Value value;
+            if(!isPrimVal(expr, &value)){
+                return false;
+            }
+            initExpr(result, isTruthy(value) ? EXPR_FALSE : EXPR_TRUE, 0);
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+static bool tryFoldNumBinary(TokenType op, double left, double right, ExprDesc* result){
     switch(op){
         case TOKEN_PLUS:
             initExpr(result, EXPR_NUM, 0);
             result->data.num = left + right;
-            return FOLD_OK;
+            return true;
         case TOKEN_MINUS:
             initExpr(result, EXPR_NUM, 0);
             result->data.num = left - right;
-            return FOLD_OK;
+            return true;
         case TOKEN_STAR:
             initExpr(result, EXPR_NUM, 0);
             result->data.num = left * right;
-            return FOLD_OK;
+            return true;
         case TOKEN_SLASH:
             if(right == 0){
-                return FOLD_RUNTIME_ERR;
+                return false;
             }
             initExpr(result, EXPR_NUM, 0);
             result->data.num = left / right;
-            return FOLD_OK;
+            return true;
         case TOKEN_PERCENT:
             if(right == 0){
-                return FOLD_RUNTIME_ERR;
+                return false;
             }
             initExpr(result, EXPR_NUM, 0);
             result->data.num = fmod(left, right);
-            return FOLD_OK;
+            return true;
         case TOKEN_EQUAL:
             initExpr(result, left == right ? EXPR_TRUE : EXPR_FALSE, 0);
-            return FOLD_OK;
+            return true;
         case TOKEN_NOT_EQUAL:
             initExpr(result, left != right ? EXPR_TRUE : EXPR_FALSE, 0);
-            return FOLD_OK;
+            return true;
         case TOKEN_GREATER:
             initExpr(result, left > right ? EXPR_TRUE : EXPR_FALSE, 0);
-            return FOLD_OK;
+            return true;
         case TOKEN_LESS:
             initExpr(result, left < right ? EXPR_TRUE : EXPR_FALSE, 0);
-            return FOLD_OK;
+            return true;
         case TOKEN_GREATER_EQUAL:
             initExpr(result, left >= right ? EXPR_TRUE : EXPR_FALSE, 0);
-            return FOLD_OK;
+            return true;
         case TOKEN_LESS_EQUAL:
             initExpr(result, left <= right ? EXPR_TRUE : EXPR_FALSE, 0);
-            return FOLD_OK;
+            return true;
         default:
-            return FOLD_NO;
+            return false;
     }
+}
+
+static bool tryFoldEq(TokenType op, const ExprDesc* left, const ExprDesc* right, ExprDesc* result){
+    if(op != TOKEN_EQUAL && op != TOKEN_NOT_EQUAL){
+        return false;
+    }
+
+    Value leftVal;
+    Value rightVal;
+    if(!isPrimVal(left, &leftVal) || !isPrimVal(right, &rightVal)){
+        return false;
+    }
+
+    bool equal = isEqual(leftVal, rightVal);
+    if(op == TOKEN_NOT_EQUAL){
+        equal = !equal;
+    }
+
+    initExpr(result, equal ? EXPR_TRUE : EXPR_FALSE, 0);
+    return true;
 }
 
 static int emitInstruction(Compiler* compiler, Instruction instruction){
@@ -1893,10 +1951,12 @@ static void handleUnary(Compiler* compiler, ExprDesc* expr, bool canAssign){
 
     parsePrecedence(compiler, expr, PREC_UNARY);
 
-    if(compiler->opts.foldConst && type == TOKEN_MINUS && expr->type == EXPR_NUM){
-        // constant folding for negative number literal
-        expr->data.num = -expr->data.num;
-        return;
+    if(compiler->opts.foldConst){
+        ExprDesc folded;
+        if(tryFoldUnary(type, expr, &folded)){
+            *expr = folded;
+            return;
+        }
     }
 
     expr2NextReg(compiler, expr);
@@ -1926,8 +1986,15 @@ static void handleBinary(Compiler* compiler, ExprDesc* expr, bool canAssign){
 
     if(compiler->opts.foldConst && expr->type == EXPR_NUM && right.type == EXPR_NUM){
         ExprDesc folded;
-        FoldRes res = tryFoldNumBinary(type, expr->data.num, right.data.num, &folded);
-        if(res == FOLD_OK){
+        if(tryFoldNumBinary(type, expr->data.num, right.data.num, &folded)){
+            *expr = folded;
+            return;
+        }
+    }
+
+    if(compiler->opts.foldConst){
+        ExprDesc folded;
+        if(tryFoldEq(type, expr, &right, &folded)){
             *expr = folded;
             return;
         }

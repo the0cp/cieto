@@ -9,6 +9,8 @@ assert.eq(10 % 4, 2, "Fold modulo");
 
 # Number forms
 assert.eq(-2 + 5, 3, "Fold negative number");
+assert.eq(-(1 + 2), -3, "Fold unary minus grouping");
+assert.eq(-1.25, -1.25, "Fold unary minus decimal");
 assert.eq(0 - 3, -3, "Fold zero operand");
 assert.eq(1.25 + 2.5, 3.75, "Fold decimal numbers");
 

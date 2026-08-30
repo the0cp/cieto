@@ -167,6 +167,12 @@ ValueType getValueType(Value value){
     return VALUE_UNKNOWN;  // For unsupported types
 }
 
+bool isTruthy(Value value){
+    return !(IS_NULL(value) ||
+            (IS_BOOL(value) && !AS_BOOL(value)) ||
+            (IS_NUM(value) && AS_NUM(value) == 0));
+}
+
 bool isEqual(Value a, Value b){
     if(getValueType(a) != getValueType(b)){
         return false;
