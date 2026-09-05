@@ -1,0 +1,44 @@
+import "assert.cies";
+import "fs";
+import "os";
+import "process";
+
+var cieto = os.getenv("CIETO_EXEC");
+assert.ok(cieto != null, "test runner provides CIETO_EXEC");
+
+var child = "process_child.cies";
+if (!fs.exists(child)) {
+    child = "tests/process_child.cies";
+}
+
+var childErr = "process_child_error.cies";
+if (!fs.exists(childErr)) {
+    childErr = "tests/process_child_error.cies";
+}
+
+var ok = process.run([
+    cieto,
+    child,
+    "plain",
+    "two words",
+    "say\"hi",
+    "tail\\",
+    ""
+]);
+
+assert.eq(ok["code"], 0, "process.run success exit code");
+assert.eq(ok["ok"], true, "process.run success ok flag");
+assert.ok(ok["stdout"].find("process child stdout") >= 0, "process.run captures stdout");
+assert.eq(ok["stderr"], "", "process.run empty stderr on success");
+
+var fail = process.run([cieto, childErr]);
+
+assert.eq(fail["ok"], false, "process.run failure ok flag");
+assert.ok(fail["code"] != 0, "process.run failure exit code");
+assert.ok(fail["stderr"].find("Division by zero") >= 0, "process.run captures stderr");
+
+var missing = process.run(["cieto_missing_command_for_process_test_9d354d87"]);
+
+assert.eq(missing["ok"], false, "process.run missing command ok flag");
+assert.eq(missing["code"], 127, "process.run missing command exit code");
+assert.ok(missing["stderr"].find("process.run") >= 0, "process.run missing command stderr");

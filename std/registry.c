@@ -8,6 +8,7 @@
 #include "modules/path.h"
 #include "modules/glob.h"
 #include "modules/os.h"
+#include "modules/process.h"
 #include "modules/time.h"
 #include "modules/gc.h"
 
@@ -28,6 +29,7 @@ static NativeModuleDef nativeModules[] = {
     {"fs", initFsModule},
     {"time", initTimeModule},
     {"os", initOsModule},
+    {"process", initProcessModule},
     {"path", initPathModule},
     {"glob", initGlobModule},
     {"gc", initGcModule},

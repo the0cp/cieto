@@ -1,0 +1,10 @@
+import "assert.cies";
+import "os";
+
+assert.eq(os.argv[1], "plain", "process child plain arg");
+assert.eq(os.argv[2], "two words", "process child spaced arg");
+assert.eq(os.argv[3], "say\"hi", "process child quoted arg");
+assert.eq(os.argv[4], "tail\\", "process child trailing slash arg");
+assert.eq(os.argv[5], "", "process child empty arg");
+
+print "process child stdout";

@@ -37,6 +37,7 @@ Set CIETO_EXEC explicitly, for example:
 }
 
 $cietoExec = (Resolve-Path -LiteralPath $cietoExec).Path
+$env:CIETO_EXEC = $cietoExec
 $cietoArgs = $env:CIETO_ARGS
 $compareArgs = $env:CIETO_COMPARE_ARGS
 

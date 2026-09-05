@@ -21,6 +21,8 @@ if [ ! -f "$CIETO_EXEC" ]; then
     exit 1
 fi
 
+export CIETO_EXEC
+
 PASSED=0
 FAILED=0
 TIMEOUTS=0
