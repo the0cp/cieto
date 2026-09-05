@@ -1,25 +1,34 @@
-var total = 0;
+import "harness.cies";
 
-for (var i = 0; i < 200000; i++) {
-    var xs = [];
+func work(size) {
+    var total = 0;
+    for (var i = 0; i < size; i++) {
+        var xs = [];
 
-    xs.push(i);
-    xs.push(i + 1);
-    xs.push(i + 2);
-    xs.push(i + 3);
-    xs.push(i + 4);
-    xs.push(i + 5);
-    xs.push(i + 6);
-    xs.push(i + 7);
+        xs.push(i);
+        xs.push(i + 1);
+        xs.push(i + 2);
+        xs.push(i + 3);
+        xs.push(i + 4);
+        xs.push(i + 5);
+        xs.push(i + 6);
+        xs.push(i + 7);
 
-    total = total + xs[0];
-    total = total + xs[3];
-    total = total + xs[7];
+        total = total + xs[0];
+        total = total + xs[3];
+        total = total + xs[7];
 
-    xs.pop();
-    xs.pop();
+        xs.pop();
+        xs.pop();
+    }
+    return total;
 }
 
-if (total == 123456789) {
-    print total;
+var size = 200000;
+var expected = 60001700000;
+if (harness.smoke()) {
+    size = 1000;
+    expected = 1508500;
 }
+
+harness.run("list_ops", work, size, expected);

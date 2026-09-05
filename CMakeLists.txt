@@ -233,6 +233,20 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME cieto_benchmark_smoke
+        COMMAND $<TARGET_FILE:cieto> "${CMAKE_SOURCE_DIR}/benchmarks/smoke.cies" --smoke
+    )
+
+    add_test(
+        NAME cieto_benchmark_smoke_no_opt
+        COMMAND $<TARGET_FILE:cieto> --no-opt "${CMAKE_SOURCE_DIR}/benchmarks/smoke.cies" --smoke
+    )
+
+    set_tests_properties(cieto_benchmark_smoke cieto_benchmark_smoke_no_opt PROPERTIES
+        TIMEOUT 30
+    )
+
+    add_test(
         NAME cieto_embedding_basic
         COMMAND $<TARGET_FILE:cieto_embed_basic>
     )

@@ -1,4 +1,5 @@
 import "gc";
+import "harness.cies";
 
 gc.threshold(1024 * 1024);
 
@@ -18,12 +19,23 @@ func makeChain(n) {
         cur = node;
     }
 
-    return head;
+    return cur.Data[0];
 }
 
-for (var round = 0; round < 300; round++) {
-    var chain = makeChain(200);
-    chain = null;
+func work(size) {
+    var total = 0;
+    for (var round = 0; round < size; round++) {
+        total = total + makeChain(200);
+    }
+    gc.collect();
+    return total;
 }
 
-gc.collect();
+var size = 300;
+var expected = 59700;
+if (harness.smoke()) {
+    size = 3;
+    expected = 597;
+}
+
+harness.run("gc_churn", work, size, expected);

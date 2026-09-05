@@ -1,18 +1,27 @@
-var total = 0;
+import "harness.cies";
 
-for (var i = 0; i < 100000; i++) {
-    var m = {};
+func work(size) {
+    var total = 0;
+    for (var i = 0; i < size; i++) {
+        var m = {};
 
-    var k1 = "key-" + i;
-    var k2 = "value-" + i;
+        var k1 = "key-" + i;
+        var k2 = "value-" + i;
 
-    m[k1] = i;
-    m[k2] = i + 1;
+        m[k1] = i;
+        m[k2] = i + 1;
 
-    total = total + m[k1];
-    total = total + m[k2];
+        total = total + m[k1];
+        total = total + m[k2];
+    }
+    return total;
 }
 
-if (total == 123456789) {
-    print total;
+var size = 100000;
+var expected = 10000000000;
+if (harness.smoke()) {
+    size = 1000;
+    expected = 1000000;
 }
+
+harness.run("map_ops", work, size, expected);

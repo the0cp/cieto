@@ -1,18 +1,27 @@
-var total = 0;
+import "harness.cies";
 
-for (var i = 0; i < 200000; i++) {
-    var s = "cieto-" + i + "-runtime-benchmark";
+func work(size) {
+    var total = 0;
+    for (var i = 0; i < size; i++) {
+        var s = "cieto-" + i + "-runtime-benchmark";
 
-    total = total + s.len();
-    total = total + s.find("runtime");
+        total = total + s.len();
+        total = total + s.find("runtime");
 
-    var t = s.replace("runtime", "vm");
-    total = total + t.len();
+        var t = s.replace("runtime", "vm");
+        total = total + t.len();
 
-    var u = t.sub(2, 12);
-    total = total + u.len();
+        var u = t.sub(2, 12);
+        total = total + u.len();
+    }
+    return total;
 }
 
-if (total == 123456789) {
-    print total;
+var size = 200000;
+var expected = 15266670;
+if (harness.smoke()) {
+    size = 1000;
+    expected = 68670;
 }
+
+harness.run("string_ops", work, size, expected);

@@ -1,0 +1,36 @@
+import "os";
+import "time";
+
+func smoke() {
+    return os.argv.size() > 1 and os.argv[1] == "--smoke";
+}
+
+func verify(name, actual, expected) {
+    if (actual != expected) {
+        print "benchmark ${name} failed: expected ${expected}, got ${actual}";
+        os.exit(1);
+    }
+}
+
+func run(name, work, size, expected) {
+    var smokeMode = smoke();
+    var mode = smokeMode ? "smoke" : "steady";
+    var warmups = smokeMode ? 0 : 1;
+    var rounds = smokeMode ? 1 : 5;
+
+    for (var i = 0; i < warmups; i++) {
+        verify(name, work(size), expected);
+    }
+
+    var result = null;
+    for (var i = 0; i < rounds; i++) {
+        var start = time.steady();
+        result = work(size);
+        var elapsedUs = (time.steady() - start) * 1000000;
+
+        verify(name, result, expected);
+        print "{\"benchmark\":\"${name}\",\"mode\":\"${mode}\",\"size\":${size},\"iteration\":${i + 1},\"elapsed_us\":${elapsedUs},\"verified\":true}";
+    }
+
+    return result;
+}

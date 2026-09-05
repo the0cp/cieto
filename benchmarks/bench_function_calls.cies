@@ -1,3 +1,5 @@
+import "harness.cies";
+
 func add3(a, b, c) {
     return a + b + c;
 }
@@ -9,12 +11,19 @@ func mix(x) {
     return c % 1000003;
 }
 
-var total = 0;
-
-for (var i = 0; i < 1000000; i++) {
-    total = total + mix(i);
+func work(size) {
+    var total = 0;
+    for (var i = 0; i < size; i++) {
+        total = total + mix(i);
+    }
+    return total;
 }
 
-if (total == 123456789) {
-    print total;
+var size = 1000000;
+var expected = 500002499946;
+if (harness.smoke()) {
+    size = 1000;
+    expected = 520500;
 }
+
+harness.run("function_calls", work, size, expected);

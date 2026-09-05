@@ -1,18 +1,29 @@
-var sum = 0;
-var x = 1;
+import "harness.cies";
 
-for (var i = 0; i < 3000000; i++) {
-    x = x + 3;
-    x = x * 2;
-    x = x % 1000003;
+func work(size) {
+    var sum = 0;
+    var x = 1;
 
-    if (x % 2 == 0) {
-        sum = sum + x;
-    } else {
-        sum = sum - x;
+    for (var i = 0; i < size; i++) {
+        x = x + 3;
+        x = x * 2;
+        x = x % 1000003;
+
+        if (x % 2 == 0) {
+            sum = sum + x;
+        } else {
+            sum = sum - x;
+        }
     }
+
+    return sum;
 }
 
-if (sum == 123456789) {
-    print sum;
+var size = 3000000;
+var expected = 3468749;
+if (harness.smoke()) {
+    size = 1000;
+    expected = 15101627;
 }
+
+harness.run("arithmetic_loop", work, size, expected);

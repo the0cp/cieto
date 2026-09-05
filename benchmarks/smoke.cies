@@ -1,0 +1,7 @@
+import "bench_arithmetic_loop.cies";
+import "bench_function_calls.cies";
+import "bench_object_dispatch.cies";
+import "bench_list_ops.cies";
+import "bench_map_ops.cies";
+import "bench_string_ops.cies";
+import "bench_gc_churn.cies";

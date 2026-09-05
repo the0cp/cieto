@@ -1,3 +1,5 @@
+import "harness.cies";
+
 class Counter {
     value = 0;
 }
@@ -15,16 +17,23 @@ method (c Counter) get() {
     return c.value;
 }
 
-var total = 0;
+func work(size) {
+    var total = 0;
+    for (var i = 0; i < size; i++) {
+        var c = Counter(i);
 
-for (var i = 0; i < 500000; i++) {
-    var c = Counter(i);
-
-    total = total + c.inc(1);
-    total = total + c.inc(2);
-    total = total + c.get();
+        total = total + c.inc(1);
+        total = total + c.inc(2);
+        total = total + c.get();
+    }
+    return total;
 }
 
-if (total == 123456789) {
-    print total;
+var size = 500000;
+var expected = 375002750000;
+if (harness.smoke()) {
+    size = 1000;
+    expected = 1505500;
 }
+
+harness.run("object_dispatch", work, size, expected);
