@@ -238,7 +238,9 @@ static Token scanDefault(){
         case '!':
             return pack(is_next('=') ? TOKEN_NOT_EQUAL : TOKEN_NOT, sc.head, (int)(sc.cur - sc.head), sc.line);
         case '<':
-            return pack(is_next('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS, sc.head, (int)(sc.cur - sc.head), sc.line);
+            if(is_next('=')) return pack(TOKEN_LESS_EQUAL, sc.head, 2, sc.line);
+            if(is_next('|')) return pack(TOKEN_REV_PIPE, sc.head, 2, sc.line);
+            return pack(TOKEN_LESS, sc.head, 1, sc.line);
         case '>':
             return pack(is_next('=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER, sc.head, (int)(sc.cur - sc.head), sc.line);
         case '?': return pack(TOKEN_QUESTION, sc.head, 1, sc.line);

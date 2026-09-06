@@ -43,6 +43,7 @@ func double(x) {
 
 var p = 5 |> add |> double;
 assert.eq(p, 12, "Pipe operator chaining");
+assert.eq(double <| add <| 5, 12, "Reverse pipe operator chaining");
 
 # Path Join Operator
 var p1 = "user";

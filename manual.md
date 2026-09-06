@@ -76,6 +76,7 @@ var zeros = [0; 5]; # Creates [0, 0, 0, 0, 0]
 Maps are key-value pairs enclosed in curly braces `{}`.
 
 - **Syntax**: `{ key1: value1, key2: value2 }`.
+- **Static fields**: `{ name = value }` is shorthand for `{ "name": value }`.
 - **Access**: Values are accessed using square brackets `[]` with the key.
 
 > Map keys support string, integer numbers, bool, and null. Using a float with a fractional part (e.g., `1.5`) as a key will result in a runtime error. However, `1.0` is treated as integer `1`.
@@ -84,7 +85,7 @@ Example:
 
 ```javascript
 var dict = { 
-    "name": "Cieto",
+    name = "Cieto",
     "version": 1, 
     true: "Verified" 
 };
@@ -210,12 +211,14 @@ print status; # Output: Adult
 
 - `!`: Logical NOT.
 
-### Pipe Operator
+### Pipe Operators
 
 The pipe operator `|>` allows for chaining function calls in a readable, left-to-right manner. It takes the result of the expression on the left and passes it as the *first argument* to the function on the right.
 
 - **Syntax**: `x |> f` is equivalent to `f(x)`.
 - **Chaining**: `x |> f |> g` is equivalent to `g(f(x))`.
+- **Reverse pipe**: `f <| x` is equivalent to `f(x)`.
+- **Reverse chaining**: `f <| g <| x` is equivalent to `f(g(x))`.
 
 Example:
 
@@ -231,6 +234,7 @@ func double(n) {
 print double(addOne(5)); # Output: 12
 
 5 |> addOne |> double |> println; # Output: 12
+println <| double <| addOne <| 5; # Output: 12
 "hello" |> func(s) { return s + " world"; } |> println; # Output: hello world
 ```
 

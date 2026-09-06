@@ -67,6 +67,7 @@ static void handleMap(Compiler* compiler, ExprDesc* expr, bool canAssign);
 static void handleIndex(Compiler* compiler, ExprDesc* expr, bool canAssign);
 static void handleThis(Compiler* compiler, ExprDesc* expr, bool canAssign);
 static void handlePipe(Compiler* compiler, ExprDesc* expr, bool canAssign);
+static void handleRevPipe(Compiler* compiler, ExprDesc* expr, bool canAssign);
 
 static void freeRegs(Compiler* compiler, int cnt);
 static void addLocal(Compiler* compiler, Token name);
@@ -126,6 +127,7 @@ ParseRule rules[] = {
     [TOKEN_THIS]                    = {handleThis,      NULL,           PREC_NONE},  
 
     [TOKEN_PIPE]                    = {NULL,            handlePipe,     PREC_PIPE},
+    [TOKEN_REV_PIPE]                = {NULL,            handleRevPipe,  PREC_PIPE},
     [TOKEN_FUNC]                    = {funcExpr,        NULL,           PREC_NONE},
 
     [TOKEN_EOF]                     = {NULL,            NULL,           PREC_NONE},
@@ -135,15 +137,34 @@ static inline ParseRule* getRule(TokenType type){return &rules[type];}
 static void parsePrecedence(Compiler* compiler, ExprDesc* expr, Precedence precedence);
 static int parseVar(Compiler* compiler, const char* err);
 
-static void advance(Compiler* compiler){
-    compiler->parser.pre = compiler->parser.cur;
+static Token scanToken(Compiler* compiler){
     while(true){
-        compiler->parser.cur = scan();
-        if(compiler->parser.cur.type != TOKEN_ERROR){
-            break;
+        Token token = scan();
+        if(token.type != TOKEN_ERROR){
+            return token;
         }
-        errorAt(compiler, &compiler->parser.cur, "Unexpected token: %.*s");
+        errorAt(compiler, &token, "Unexpected token: %.*s");
     }
+}
+
+static void advance(Compiler* compiler){
+    Parser* parser = &compiler->parser;
+    parser->pre = parser->cur;
+    if(parser->hasNext){
+        parser->cur = parser->next;
+        parser->hasNext = false;
+    }else{
+        parser->cur = scanToken(compiler);
+    }
+}
+
+static TokenType peekType(Compiler* compiler){
+    Parser* parser = &compiler->parser;
+    if(!parser->hasNext){
+        parser->next = scanToken(compiler);
+        parser->hasNext = true;
+    }
+    return parser->next.type;
 }
 
 static void initExpr(ExprDesc* expr, ExprType type, int index){
@@ -676,6 +697,7 @@ ObjectFunc* compileWithOpts(VM* vm, const char* code, const char* srcNameStr, co
     compiler->vm = vm;
     compiler->func = NULL;
     compiler->opts = opts != NULL ? *opts : defaultCompileOpts();
+    compiler->parser.hasNext = false;
     vm->compiler = compiler;
     initCompiler(compiler, vm, enclosing, TYPE_SCRIPT, srcName);
     pop(vm);    // pop srcName
@@ -2285,15 +2307,9 @@ static void handleCall(Compiler* compiler, ExprDesc* expr, bool canAssign){
     initExpr(expr, EXPR_REG, expr->data.loc.index);
 }
 
-static void handlePipe(Compiler* compiler, ExprDesc* expr, bool canAssign){
-    expr2NextReg(compiler, expr);
-    int argReg = expr->data.loc.index;
-
-    ExprDesc funcExpr;
-    parsePrecedence(compiler, &funcExpr, (Precedence)(PREC_PIPE + 1));
-    expr2NextReg(compiler, &funcExpr);
-
-    int funcReg = funcExpr.data.loc.index;
+static void emitCall1(Compiler* compiler, ExprDesc* func, ExprDesc* arg, int resultReg){
+    int funcReg = func->data.loc.index;
+    int argReg = arg->data.loc.index;
 
     int targetFuncReg = getFreeReg(compiler);
     reserveReg(compiler, 2);
@@ -2303,10 +2319,34 @@ static void handlePipe(Compiler* compiler, ExprDesc* expr, bool canAssign){
     emitABC(compiler, OP_MOVE, targetArgReg, argReg, 0);
 
     emitABC(compiler, OP_CALL, targetFuncReg, 2, 2);
-    emitABC(compiler, OP_MOVE, argReg, targetFuncReg, 0);
+    emitABC(compiler, OP_MOVE, resultReg, targetFuncReg, 0);
     freeRegs(compiler, 3);
+}
 
-    initExpr(expr, EXPR_REG, argReg);
+static void handlePipe(Compiler* compiler, ExprDesc* expr, bool canAssign){
+    expr2NextReg(compiler, expr);
+    int resultReg = expr->data.loc.index;
+
+    ExprDesc func;
+    parsePrecedence(compiler, &func, (Precedence)(PREC_PIPE + 1));
+    expr2NextReg(compiler, &func);
+
+    emitCall1(compiler, &func, expr, resultReg);
+
+    initExpr(expr, EXPR_REG, resultReg);
+}
+
+static void handleRevPipe(Compiler* compiler, ExprDesc* expr, bool canAssign){
+    expr2NextReg(compiler, expr);
+    int resultReg = expr->data.loc.index;
+
+    ExprDesc arg;
+    parsePrecedence(compiler, &arg, PREC_PIPE);
+    expr2NextReg(compiler, &arg);
+
+    emitCall1(compiler, expr, &arg, resultReg);
+
+    initExpr(expr, EXPR_REG, resultReg);
 }
 
 static void handleImport(Compiler* compiler, ExprDesc* expr, bool canAssign){
@@ -2475,11 +2515,16 @@ static void handleMap(Compiler* compiler, ExprDesc* expr, bool canAssign){
     if(!checkType(compiler, TOKEN_RIGHT_BRACE)){
         do{
             ExprDesc keyExpr;
-            expression(compiler, &keyExpr);
+            if(checkType(compiler, TOKEN_IDENTIFIER) && peekType(compiler) == TOKEN_ASSIGN){
+                advance(compiler);
+                initExpr(&keyExpr, EXPR_K, identifierConst(compiler));
+                consume(compiler, TOKEN_ASSIGN, "Expect '=' after map field name.");
+            }else{
+                expression(compiler, &keyExpr);
+                consume(compiler, TOKEN_COLON, "Expect ':' after map key.");
+            }
             expr2NextReg(compiler, &keyExpr);
             int keyReg = keyExpr.data.loc.index;
-
-            consume(compiler, TOKEN_COLON, "Expect ':' after map key.");
 
             ExprDesc valueExpr;
             expression(compiler, &valueExpr);

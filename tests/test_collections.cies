@@ -34,6 +34,17 @@ assert.eq(dict[true], "yes", "Map bool key access");
 dict[null] = "nil";
 assert.eq(dict[null], "nil", "Map null key access");
 
+var dynamicKey = "dynamic";
+var staticKey = "not-static";
+var fields = {
+    staticKey = 7,
+    "quoted": 8,
+    dynamicKey: 9
+};
+assert.eq(fields["staticKey"], 7, "Map static field key");
+assert.eq(fields["quoted"], 8, "Map quoted string key with static fields");
+assert.eq(fields["dynamic"], 9, "Map dynamic key with static fields");
+
 # Iteration
 var iterSum = 0;
 for (var n : [1, 2, 3]) { 

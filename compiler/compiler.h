@@ -19,6 +19,8 @@ typedef struct{
 typedef struct{
     Token pre;  // Previous token
     Token cur;  // Current token
+    Token next;
+    bool hasNext;
     bool hadError;  // Flag to indicate if there was a compilation error
     bool panic; // Flag to indicate if we are in panic mode
 }Parser;
@@ -128,6 +130,7 @@ static void handleMap(Compiler* compiler, ExprDesc* expr, bool canAssign);
 static void handleThis(Compiler* compiler, ExprDesc* expr, bool canAssign);
 
 static void handlePipe(Compiler* compiler, ExprDesc* expr, bool canAssign);
+static void handleRevPipe(Compiler* compiler, ExprDesc* expr, bool canAssign);
 
 static void advance(Compiler* compiler);
 
