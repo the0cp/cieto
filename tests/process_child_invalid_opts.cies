@@ -5,20 +5,26 @@ var mode = os.argv[1];
 
 if (mode == "opts_type") {
     process.run(["unused"], []);
+} else if (mode == "argv_missing") {
+    process.run({cwd = "."});
+} else if (mode == "argv_type") {
+    process.run({"argv": "unused"});
+} else if (mode == "argv_duplicate") {
+    process.run(["unused"], {argv = ["unused"]});
 } else if (mode == "unknown") {
-    process.run(["unused"], {"unknown": true});
+    process.run({argv = ["unused"], unknown = true});
 } else if (mode == "cwd_type") {
-    process.run(["unused"], {"cwd": 1});
+    process.run({argv = ["unused"], cwd = 1});
 } else if (mode == "cwd_null") {
-    process.run(["unused"], {"cwd": "bad\0cwd"});
+    process.run({argv = ["unused"], cwd = "bad\0cwd"});
 } else if (mode == "env_type") {
-    process.run(["unused"], {"env": []});
+    process.run({argv = ["unused"], env = []});
 } else if (mode == "env_name") {
-    process.run(["unused"], {"env": {1: "value"}});
+    process.run({argv = ["unused"], env = {1: "value"}});
 } else if (mode == "env_value") {
-    process.run(["unused"], {"env": {"NAME": 1}});
+    process.run({argv = ["unused"], env = {NAME = 1}});
 } else if (mode == "env_null") {
-    process.run(["unused"], {"env": {"NAME": "bad\0value"}});
+    process.run({argv = ["unused"], env = {NAME = "bad\0value"}});
 } else {
     os.exit(2);
 }

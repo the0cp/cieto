@@ -122,20 +122,12 @@ static bool checkEnv(VM* vm, ObjectMap* env){
     return true;
 }
 
-static bool readOpts(VM* vm, int argCount, Value* args, ProcOpts* opts){
-    opts->cwd = NULL;
-    opts->env = NULL;
+typedef struct{
+    ObjectList* argv;
+    ProcOpts opts;
+}ProcSpec;
 
-    if(argCount == 1){
-        return true;
-    }
-
-    if(!IS_MAP(args[1])){
-        runtimeError(vm, "process.run opts must be a Map.\n");
-        return false;
-    }
-
-    ObjectMap* map = AS_MAP(args[1]);
+static bool readSpecMap(VM* vm, ObjectMap* map, ProcSpec* spec){
     for(int i = 0; i < map->table.capacity; i++){
         Entry* entry = &map->table.entries[i];
         if(IS_EMPTY(entry->key)){
@@ -148,7 +140,19 @@ static bool readOpts(VM* vm, int argCount, Value* args, ProcOpts* opts){
         }
 
         ObjectString* key = AS_STRING(entry->key);
-        if(strEq(key, "cwd")){
+        if(strEq(key, "argv")){
+            if(spec->argv != NULL){
+                runtimeError(vm, "process.run argv must not be specified twice.\n");
+                return false;
+            }
+
+            if(!IS_LIST(entry->value)){
+                runtimeError(vm, "process.run argv must be a List.\n");
+                return false;
+            }
+
+            spec->argv = AS_LIST(entry->value);
+        }else if(strEq(key, "cwd")){
             if(!IS_STRING(entry->value)){
                 runtimeError(vm, "process.run cwd must be a string.\n");
                 return false;
@@ -165,21 +169,63 @@ static bool readOpts(VM* vm, int argCount, Value* args, ProcOpts* opts){
                 return false;
             }
 
-            opts->cwd = cwd->chars;
+            spec->opts.cwd = cwd->chars;
         }else if(strEq(key, "env")){
             if(!IS_MAP(entry->value)){
                 runtimeError(vm, "process.run env must be a Map.\n");
                 return false;
             }
 
-            opts->env = AS_MAP(entry->value);
-            if(!checkEnv(vm, opts->env)){
+            spec->opts.env = AS_MAP(entry->value);
+            if(!checkEnv(vm, spec->opts.env)){
                 return false;
             }
         }else{
             runtimeError(vm, "process.run unknown option '%.*s'.\n", (int)key->length, key->chars);
             return false;
         }
+    }
+
+    return true;
+}
+
+static bool readSpec(VM* vm, int argCount, Value* args, ProcSpec* spec){
+    memset(spec, 0, sizeof(ProcSpec));
+
+    if(argCount < 1 || argCount > 2){
+        runtimeError(vm, "process.run expects argv or a process config.\n");
+        return false;
+    }
+
+    if(IS_LIST(args[0])){
+        spec->argv = AS_LIST(args[0]);
+    }else if(argCount == 1 && IS_MAP(args[0])){
+        if(!readSpecMap(vm, AS_MAP(args[0]), spec)){
+            return false;
+        }
+    }else{
+        runtimeError(vm, "process.run expects argv or a process config.\n");
+        return false;
+    }
+
+    if(argCount == 2){
+        if(!IS_MAP(args[1])){
+            runtimeError(vm, "process.run opts must be a Map.\n");
+            return false;
+        }
+        if(!readSpecMap(vm, AS_MAP(args[1]), spec)){
+            return false;
+        }
+    }
+
+    if(spec->argv == NULL){
+        runtimeError(vm, "process.run config requires argv.\n");
+        return false;
+    }
+
+    if(spec->argv->count == 0){
+        runtimeError(vm, "process.run argv must not be empty.\n");
+        return false;
     }
 
     return true;
@@ -238,23 +284,12 @@ static Value makeResult(VM* vm, int code, ProcBuffer* out, ProcBuffer* err){
 }
 
 static Value process_run(VM* vm, int argCount, Value* args){
-    if(argCount < 1 || argCount > 2 || !IS_LIST(args[0])){
-        runtimeError(vm, "process.run expects argv and an optional opts Map.\n");
+    ProcSpec spec;
+    if(!readSpec(vm, argCount, args, &spec)){
         return NULL_VAL;
     }
 
-    ObjectList* argvList = AS_LIST(args[0]);
-    if(argvList->count == 0){
-        runtimeError(vm, "process.run argv must not be empty.\n");
-        return NULL_VAL;
-    }
-
-    ProcOpts opts;
-    if(!readOpts(vm, argCount, args, &opts)){
-        return NULL_VAL;
-    }
-
-    char** argv = makeArgv(vm, argvList);
+    char** argv = makeArgv(vm, spec.argv);
     if(argv == NULL){
         return NULL_VAL;
     }
@@ -263,7 +298,7 @@ static Value process_run(VM* vm, int argCount, Value* args){
     ProcBuffer err = {0};
     int code = -1;
 
-    bool ok = runProc(vm, argv, &opts, &code, &out, &err);
+    bool ok = runProc(vm, argv, &spec.opts, &code, &out, &err);
     free(argv);
 
     if(!ok){

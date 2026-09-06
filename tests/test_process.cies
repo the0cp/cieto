@@ -38,7 +38,9 @@ assert.eq(fail["ok"], false, "process.run failure ok flag");
 assert.ok(fail["code"] != 0, "process.run failure exit code");
 assert.ok(fail["stderr"].find("Division by zero") >= 0, "process.run captures stderr");
 
-var missing = process.run(["cieto_missing_command_for_process_test_9d354d87"]);
+var missing = process.run <| {
+    "argv": ["cieto_missing_command_for_process_test_9d354d87"]
+};
 
 assert.eq(missing["ok"], false, "process.run missing command ok flag");
 assert.eq(missing["code"], 127, "process.run missing command exit code");
@@ -51,13 +53,14 @@ if (!fs.exists(optsChild)) {
 optsChild = path.abs(optsChild);
 
 var parentEnv = os.getenv("CIETO_PROCESS_TEST_ENV");
-var withOpts = process.run([cieto, optsChild], {
-    "cwd": path.dirname(optsChild),
-    "env": {
-        "CIETO_EXEC": "child override",
-        "CIETO_PROCESS_TEST_ENV": "child value with spaces"
+var withOpts = process.run <| {
+    argv = [cieto, optsChild],
+    cwd = path.dirname(optsChild),
+    env = {
+        CIETO_EXEC = "child override",
+        CIETO_PROCESS_TEST_ENV = "child value with spaces"
     }
-});
+};
 
 assert.eq(withOpts["code"], 0, "process.run cwd and env exit code");
 assert.eq(withOpts["ok"], true, "process.run cwd and env ok flag");
@@ -80,6 +83,9 @@ invalidChild = path.abs(invalidChild);
 
 var optErrs = [
     ["opts_type", "opts must be a Map"],
+    ["argv_missing", "config requires argv"],
+    ["argv_type", "argv must be a List"],
+    ["argv_duplicate", "argv must not be specified twice"],
     ["unknown", "unknown option"],
     ["cwd_type", "cwd must be a string"],
     ["cwd_null", "cwd must not contain null bytes"],

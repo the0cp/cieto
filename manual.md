@@ -75,8 +75,9 @@ var zeros = [0; 5]; # Creates [0, 0, 0, 0, 0]
 
 Maps are key-value pairs enclosed in curly braces `{}`.
 
-- **Syntax**: `{ key1: value1, key2: value2 }`.
-- **Static fields**: `{ name = value }` is shorthand for `{ "name": value }`.
+- **Map entry**: `{ key: value }` evaluates `key` as an expression.
+- **Static field**: `{ name = value }` uses the identifier text as a String key. It is shorthand for `{ "name": value }` and does not read a variable named `name`.
+- **Mixed form**: Static fields and regular Map entries can appear in the same Map.
 - **Access**: Values are accessed using square brackets `[]` with the key.
 
 > Map keys support string, integer numbers, bool, and null. Using a float with a fractional part (e.g., `1.5`) as a key will result in a runtime error. However, `1.0` is treated as integer `1`.
@@ -84,13 +85,17 @@ Maps are key-value pairs enclosed in curly braces `{}`.
 Example:
 
 ```javascript
+var key = "status";
 var dict = { 
     name = "Cieto",
     "version": 1, 
-    true: "Verified" 
+    key: "ready",
+    true: "Verified"
 };
 
 print dict["name"]; # Output: Cieto
+print dict["version"]; # Output: 1
+print dict["status"]; # Output: ready
 dict["new_key"] = 100;
 ```
 
@@ -213,12 +218,14 @@ print status; # Output: Adult
 
 ### Pipe Operators
 
-The pipe operator `|>` allows for chaining function calls in a readable, left-to-right manner. It takes the result of the expression on the left and passes it as the *first argument* to the function on the right.
+Pipe operators call a function with one argument. They differ only in whether the value or the function is written first.
 
-- **Syntax**: `x |> f` is equivalent to `f(x)`.
-- **Chaining**: `x |> f |> g` is equivalent to `g(f(x))`.
+- **Forward pipe**: `x |> f` is equivalent to `f(x)`.
+- **Forward chaining**: `x |> f |> g` is left-associative and equivalent to `g(f(x))`.
 - **Reverse pipe**: `f <| x` is equivalent to `f(x)`.
-- **Reverse chaining**: `f <| g <| x` is equivalent to `f(g(x))`.
+- **Reverse chaining**: `f <| g <| x` is right-associative and equivalent to `f(g(x))`.
+
+The left side of `<|` must evaluate to a callable value. The operator does not append an argument to an existing call: `f() <| x` calls the value returned by `f()` with `x`.
 
 Example:
 
@@ -236,6 +243,13 @@ print double(addOne(5)); # Output: 12
 5 |> addOne |> double |> println; # Output: 12
 println <| double <| addOne <| 5; # Output: 12
 "hello" |> func(s) { return s + " world"; } |> println; # Output: hello world
+
+func nameOf(config) {
+    return config["name"];
+}
+
+var config = {name = "Cieto"};
+var name = nameOf <| config; # Equivalent to nameOf(config)
 ```
 
 ### Indexing & Slicing
@@ -839,6 +853,87 @@ import "os";
   - *Description*: Terminates the program immediately with the given exit code.
   
   - *Arguments*: `code` (Number).
+
+### process - Child Process Module
+
+The `process` module runs a program directly without invoking a shell. Standard output and standard error are captured separately.
+
+#### Import
+
+```javascript
+import "process";
+```
+
+#### Functions
+
+- `process.run(argv)`
+
+  - *Description*: Runs a program with an argument list.
+  - *Arguments*: `argv` is a non-empty List of Strings. Its first item is the executable.
+
+- `process.run(argv, opts)`
+
+  - *Description*: Runs a program with an argument list and an options Map.
+  - *Options*: `cwd` changes the child working directory. `env` overrides inherited environment variables.
+
+- `process.run(config)`
+
+  - *Description*: Runs a program using a configuration Map.
+  - *Fields*: `argv` is required. `cwd` and `env` are optional.
+
+The argument-list form is the shortest way to run a program:
+
+```javascript
+var result = process.run(["cieto", "tests/test.cies"]);
+```
+
+The options form accepts both quoted Map keys and static fields:
+
+```javascript
+var quoted = process.run(["cieto", "tests/test.cies"], {
+    "cwd": "./project",
+    "env": {"MODE": "release"}
+});
+
+var fields = process.run(["cieto", "tests/test.cies"], {
+    cwd = "./project",
+    env = {MODE = "release"}
+});
+```
+
+A complete configuration can be passed with a regular function call:
+
+```javascript
+var quoted = process.run({
+    "argv": ["cieto", "tests/test.cies"],
+    "cwd": "./project",
+    "env": {"MODE": "release"}
+});
+
+var fields = process.run({
+    argv = ["cieto", "tests/test.cies"],
+    cwd = "./project",
+    env = {MODE = "release"}
+});
+```
+
+The reverse pipe passes the complete configuration as the single argument. These calls are equivalent to the previous two:
+
+```javascript
+var quoted = process.run <| {
+    "argv": ["cieto", "tests/test.cies"],
+    "cwd": "./project",
+    "env": {"MODE": "release"}
+};
+
+var fields = process.run <| {
+    argv = ["cieto", "tests/test.cies"],
+    cwd = "./project",
+    env = {MODE = "release"}
+};
+```
+
+All forms return a Map with `code`, `ok`, `stdout`, and `stderr` fields.
 
 ### time - Time Module
 
