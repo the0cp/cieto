@@ -1,0 +1,17 @@
+import "fs";
+import "os";
+
+if (!fs.exists("process_child_opts.cies")) {
+    os.exit(2);
+}
+if (os.getenv("CIETO_PROCESS_TEST_ENV") != "child value with spaces") {
+    os.exit(3);
+}
+if (os.getenv("CIETO_EXEC") != "child override") {
+    os.exit(4);
+}
+if (os.getenv("PATH") == null) {
+    os.exit(5);
+}
+
+print "process child opts";

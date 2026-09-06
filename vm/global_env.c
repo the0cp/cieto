@@ -2,6 +2,7 @@
 
 #include "mem.h"
 #include "object.h"
+#include "vm.h"
 
 #define GLOBAL_NAME_MAX_LOAD 0.75
 
@@ -123,7 +124,10 @@ bool globalEnsureSlot(VM* vm, GlobalEnv* env, ObjectString* name, uint32_t* slot
         return true;
     }
 
+    push(vm, OBJECT_VAL(name));
+
     if(env->count > UINT32_MAX){
+        pop(vm);
         return false;
     }
 
@@ -133,6 +137,7 @@ bool globalEnsureSlot(VM* vm, GlobalEnv* env, ObjectString* name, uint32_t* slot
     }
 
     if(!ensureValueCapacity(vm, env, env->count + 1)){
+        pop(vm);
         return false;
     }
 
@@ -150,6 +155,7 @@ bool globalEnsureSlot(VM* vm, GlobalEnv* env, ObjectString* name, uint32_t* slot
         *slot = newSlot;
     }
 
+    pop(vm);
     return true;
 }
 

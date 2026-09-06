@@ -1,6 +1,7 @@
 import "assert.cies";
 import "fs";
 import "os";
+import "path";
 import "process";
 
 var cieto = os.getenv("CIETO_EXEC");
@@ -42,3 +43,54 @@ var missing = process.run(["cieto_missing_command_for_process_test_9d354d87"]);
 assert.eq(missing["ok"], false, "process.run missing command ok flag");
 assert.eq(missing["code"], 127, "process.run missing command exit code");
 assert.ok(missing["stderr"].find("process.run") >= 0, "process.run missing command stderr");
+
+var optsChild = "process_fixture/process_child_opts.cies";
+if (!fs.exists(optsChild)) {
+    optsChild = "tests/process_fixture/process_child_opts.cies";
+}
+optsChild = path.abs(optsChild);
+
+var parentEnv = os.getenv("CIETO_PROCESS_TEST_ENV");
+var withOpts = process.run([cieto, optsChild], {
+    "cwd": path.dirname(optsChild),
+    "env": {
+        "CIETO_EXEC": "child override",
+        "CIETO_PROCESS_TEST_ENV": "child value with spaces"
+    }
+});
+
+assert.eq(withOpts["code"], 0, "process.run cwd and env exit code");
+assert.eq(withOpts["ok"], true, "process.run cwd and env ok flag");
+assert.ok(withOpts["stdout"].find("process child opts") >= 0, "process.run applies cwd and env");
+assert.eq(os.getenv("CIETO_PROCESS_TEST_ENV"), parentEnv, "process.run does not change parent env");
+assert.eq(os.getenv("CIETO_EXEC"), cieto, "process.run keeps parent env overrides local");
+
+var badCwd = process.run([cieto, optsChild], {
+    "cwd": path.join(path.dirname(optsChild), "missing_process_cwd_9d354d87")
+});
+
+assert.eq(badCwd["code"], 127, "process.run missing cwd exit code");
+assert.eq(badCwd["ok"], false, "process.run missing cwd ok flag");
+
+var invalidChild = "process_child_invalid_opts.cies";
+if (!fs.exists(invalidChild)) {
+    invalidChild = "tests/process_child_invalid_opts.cies";
+}
+invalidChild = path.abs(invalidChild);
+
+var optErrs = [
+    ["opts_type", "opts must be a Map"],
+    ["unknown", "unknown option"],
+    ["cwd_type", "cwd must be a string"],
+    ["cwd_null", "cwd must not contain null bytes"],
+    ["env_type", "env must be a Map"],
+    ["env_name", "env names must be strings"],
+    ["env_value", "env values must be strings"],
+    ["env_null", "env must not contain null bytes"]
+];
+
+for (var optErr : optErrs) {
+    var result = process.run([cieto, invalidChild, optErr[0]]);
+    assert.eq(result["ok"], false, "process.run rejects " + optErr[0]);
+    assert.ok(result["stderr"].find(optErr[1]) >= 0, "process.run reports " + optErr[0]);
+}
