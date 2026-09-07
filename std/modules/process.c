@@ -1,4 +1,5 @@
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -180,6 +181,25 @@ static bool readSpecMap(VM* vm, ObjectMap* map, ProcSpec* spec){
             if(!checkEnv(vm, spec->opts.env)){
                 return false;
             }
+        }else if(strEq(key, "timeout")){
+            if(!IS_NUM(entry->value)){
+                runtimeError(vm, "process.run timeout must be a number.\n");
+                return false;
+            }
+
+            double seconds = AS_NUM(entry->value);
+            if(!isfinite(seconds) || seconds <= 0){
+                runtimeError(vm, "process.run timeout must be finite and greater than zero.\n");
+                return false;
+            }
+
+            double millis = ceil(seconds * 1000.0);
+            if(millis >= UINT32_MAX){
+                runtimeError(vm, "process.run timeout is too large.\n");
+                return false;
+            }
+
+            spec->opts.timeoutMs = (uint32_t)millis;
         }else{
             runtimeError(vm, "process.run unknown option '%.*s'.\n", (int)key->length, key->chars);
             return false;
@@ -258,8 +278,8 @@ static char** makeArgv(VM* vm, ObjectList* list){
     return argv;
 }
 
-static Value makeResult(VM* vm, int code, ProcBuffer* out, ProcBuffer* err){
-    if(out->len > INT_MAX || err->len > INT_MAX){
+static Value makeResult(VM* vm, const ProcRes* res){
+    if(res->out.len > INT_MAX || res->err.len > INT_MAX){
         runtimeError(vm, "process.run output is too large.\n");
         return NULL_VAL;
     }
@@ -267,17 +287,19 @@ static Value makeResult(VM* vm, int code, ProcBuffer* out, ProcBuffer* err){
     ObjectMap* result = newMap(vm);
     push(vm, OBJECT_VAL(result));
 
-    const char* outData = out->data != NULL ? out->data : "";
-    const char* errData = err->data != NULL ? err->data : "";
+    const char* outData = res->out.data != NULL ? res->out.data : "";
+    const char* errData = res->err.data != NULL ? res->err.data : "";
 
-    ObjectString* outStr = copyString(vm, outData, (int)out->len);
+    ObjectString* outStr = copyString(vm, outData, (int)res->out.len);
     mapSetVal(vm, result, "stdout", OBJECT_VAL(outStr));
 
-    ObjectString* errStr = copyString(vm, errData, (int)err->len);
+    ObjectString* errStr = copyString(vm, errData, (int)res->err.len);
     mapSetVal(vm, result, "stderr", OBJECT_VAL(errStr));
 
-    mapSetVal(vm, result, "code", NUM_VAL((double)code));
-    mapSetVal(vm, result, "ok", BOOL_VAL(code == 0));
+    Value code = res->timedOut ? NULL_VAL : NUM_VAL((double)res->code);
+    mapSetVal(vm, result, "code", code);
+    mapSetVal(vm, result, "ok", BOOL_VAL(!res->timedOut && res->code == 0));
+    mapSetVal(vm, result, "timedOut", BOOL_VAL(res->timedOut));
 
     pop(vm);    // result
     return OBJECT_VAL(result);
@@ -294,22 +316,20 @@ static Value process_run(VM* vm, int argCount, Value* args){
         return NULL_VAL;
     }
 
-    ProcBuffer out = {0};
-    ProcBuffer err = {0};
-    int code = -1;
+    ProcRes res = {.code = -1};
 
-    bool ok = runProc(vm, argv, &spec.opts, &code, &out, &err);
+    bool ok = runProc(vm, argv, &spec.opts, &res);
     free(argv);
 
     if(!ok){
-        freeProcBuffer(&out);
-        freeProcBuffer(&err);
+        freeProcBuffer(&res.out);
+        freeProcBuffer(&res.err);
         return NULL_VAL;
     }
 
-    Value result = makeResult(vm, code, &out, &err);
-    freeProcBuffer(&out);
-    freeProcBuffer(&err);
+    Value result = makeResult(vm, &res);
+    freeProcBuffer(&res.out);
+    freeProcBuffer(&res.err);
     return result;
 }
 

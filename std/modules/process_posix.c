@@ -2,11 +2,13 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "object.h"
@@ -164,10 +166,113 @@ static ReadRes readReadyFd(int fd, ProcBuffer* buf){
     }
 }
 
-static bool readPipes(VM* vm, int outFd, int errFd, ProcBuffer* out, ProcBuffer* err){
-    bool ok = true;
+static int procExitCode(int status){
+    if(WIFEXITED(status)){
+        return WEXITSTATUS(status);
+    }
 
-    while(outFd >= 0 || errFd >= 0){
+    if(WIFSIGNALED(status)){
+        return 128 + WTERMSIG(status);
+    }
+
+    return -1;
+}
+
+static bool monotonicMs(VM* vm, uint64_t* millis){
+    struct timespec now;
+    if(clock_gettime(CLOCK_MONOTONIC, &now) != 0){
+        runtimeError(vm, "process.run could not read the monotonic clock: %s.\n", strerror(errno));
+        return false;
+    }
+
+    *millis = (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
+    return true;
+}
+
+static pid_t waitProc(VM* vm, pid_t pid, int* status, int opts){
+    pid_t waited;
+    do{
+        waited = waitpid(pid, status, opts);
+    }while(waited < 0 && errno == EINTR);
+
+    if(waited < 0){
+        runtimeError(vm, "process.run could not wait for process: %s.\n", strerror(errno));
+    }
+    return waited;
+}
+
+static bool killProc(pid_t pid){
+    if(kill(-pid, SIGKILL) == 0){
+        return true;
+    }
+
+    return kill(pid, SIGKILL) == 0 || errno == ESRCH;
+}
+
+static bool collectProc(
+    VM* vm,
+    pid_t pid,
+    int outFd,
+    int errFd,
+    const ProcOpts* opts,
+    ProcRes* res
+){
+    bool ok = true;
+    bool reaped = false;
+    int status = 0;
+    uint64_t deadline = 0;
+
+    if(opts->timeoutMs > 0){
+        if(!monotonicMs(vm, &deadline)){
+            killProc(pid);
+            waitProc(vm, pid, &status, 0);
+            close(outFd);
+            close(errFd);
+            return false;
+        }
+        deadline += opts->timeoutMs;
+    }
+
+    while(outFd >= 0 || errFd >= 0 || (opts->timeoutMs > 0 && !reaped)){
+        uint64_t remaining = 0;
+        if(opts->timeoutMs > 0 && !reaped){
+            pid_t waited = waitProc(vm, pid, &status, WNOHANG);
+            if(waited < 0){
+                ok = false;
+                break;
+            }
+            if(waited == pid){
+                reaped = true;
+                kill(-pid, SIGKILL);
+            }else{
+                uint64_t now;
+                if(!monotonicMs(vm, &now)){
+                    ok = false;
+                    break;
+                }
+
+                if(now >= deadline){
+                    if(!killProc(pid)){
+                        runtimeError(vm, "process.run could not terminate timed out process: %s.\n", strerror(errno));
+                        ok = false;
+                        break;
+                    }
+                    res->timedOut = true;
+                    if(waitProc(vm, pid, &status, 0) < 0){
+                        ok = false;
+                        break;
+                    }
+                    reaped = true;
+                }else{
+                    remaining = deadline - now;
+                }
+            }
+        }
+
+        if(outFd < 0 && errFd < 0 && reaped){
+            break;
+        }
+
         fd_set reads;
         FD_ZERO(&reads);
 
@@ -183,7 +288,16 @@ static bool readPipes(VM* vm, int outFd, int errFd, ProcBuffer* out, ProcBuffer*
             }
         }
 
-        int ready = select(maxFd + 1, &reads, NULL, NULL, NULL);
+        struct timeval wait;
+        struct timeval* waitPtr = NULL;
+        if(opts->timeoutMs > 0 && !reaped){
+            uint64_t waitMs = remaining < 20 ? remaining : 20;
+            wait.tv_sec = (long)(waitMs / 1000);
+            wait.tv_usec = (long)(waitMs % 1000) * 1000;
+            waitPtr = &wait;
+        }
+
+        int ready = select(maxFd + 1, &reads, NULL, NULL, waitPtr);
         if(ready < 0){
             if(errno == EINTR){
                 continue;
@@ -192,17 +306,20 @@ static bool readPipes(VM* vm, int outFd, int errFd, ProcBuffer* out, ProcBuffer*
             ok = false;
             break;
         }
+        if(ready == 0){
+            continue;
+        }
 
         if(outFd >= 0 && FD_ISSET(outFd, &reads)){
-            ReadRes res = readReadyFd(outFd, out);
-            if(res == READ_EOF){
+            ReadRes readRes = readReadyFd(outFd, &res->out);
+            if(readRes == READ_EOF){
                 close(outFd);
                 outFd = -1;
-            }else if(res == READ_NOMEM){
+            }else if(readRes == READ_NOMEM){
                 runtimeError(vm, "process.run could not allocate stdout.\n");
                 ok = false;
                 break;
-            }else if(res == READ_ERROR){
+            }else if(readRes == READ_ERROR){
                 runtimeError(vm, "process.run failed while reading stdout.\n");
                 ok = false;
                 break;
@@ -210,15 +327,15 @@ static bool readPipes(VM* vm, int outFd, int errFd, ProcBuffer* out, ProcBuffer*
         }
 
         if(errFd >= 0 && FD_ISSET(errFd, &reads)){
-            ReadRes res = readReadyFd(errFd, err);
-            if(res == READ_EOF){
+            ReadRes readRes = readReadyFd(errFd, &res->err);
+            if(readRes == READ_EOF){
                 close(errFd);
                 errFd = -1;
-            }else if(res == READ_NOMEM){
+            }else if(readRes == READ_NOMEM){
                 runtimeError(vm, "process.run could not allocate stderr.\n");
                 ok = false;
                 break;
-            }else if(res == READ_ERROR){
+            }else if(readRes == READ_ERROR){
                 runtimeError(vm, "process.run failed while reading stderr.\n");
                 ok = false;
                 break;
@@ -233,28 +350,27 @@ static bool readPipes(VM* vm, int outFd, int errFd, ProcBuffer* out, ProcBuffer*
         close(errFd);
     }
 
+    if(!reaped){
+        if(!ok){
+            killProc(pid);
+        }
+        if(waitProc(vm, pid, &status, 0) < 0){
+            ok = false;
+        }
+    }
+
+    if(ok && !res->timedOut){
+        res->code = procExitCode(status);
+    }
+
     return ok;
-}
-
-static int procExitCode(int status){
-    if(WIFEXITED(status)){
-        return WEXITSTATUS(status);
-    }
-
-    if(WIFSIGNALED(status)){
-        return 128 + WTERMSIG(status);
-    }
-
-    return -1;
 }
 
 bool runProc(
     VM* vm,
     char** argv,
     const ProcOpts* opts,
-    int* code,
-    ProcBuffer* out,
-    ProcBuffer* err
+    ProcRes* res
 ){
     EnvList env;
     if(!buildEnv(vm, opts->env, &env)){
@@ -306,6 +422,12 @@ bool runProc(
         close(errPipe[0]);
         close(errPipe[1]);
 
+        if(opts->timeoutMs > 0 && setpgid(0, 0) != 0){
+            const char msg[] = "process.run: failed to create process group\n";
+            writeChildErr(STDERR_FILENO, msg, sizeof(msg) - 1);
+            _exit(126);
+        }
+
         if(opts->cwd != NULL && chdir(opts->cwd) != 0){
             const char msg[] = "process.run: failed to enter cwd\n";
             writeChildErr(STDERR_FILENO, msg, sizeof(msg) - 1);
@@ -325,24 +447,11 @@ bool runProc(
     close(outPipe[1]);
     close(errPipe[1]);
 
-    bool ok = readPipes(vm, outPipe[0], errPipe[0], out, err);
-
-    int status = 0;
-    while(waitpid(pid, &status, 0) < 0){
-        if(errno == EINTR){
-            continue;
-        }
-
-        runtimeError(vm, "process.run could not wait for process: %s.\n", strerror(errno));
-        return false;
+    if(opts->timeoutMs > 0){
+        setpgid(pid, pid);
     }
 
-    if(!ok){
-        return false;
-    }
-
-    *code = procExitCode(status);
-    return true;
+    return collectProc(vm, pid, outPipe[0], errPipe[0], opts, res);
 }
 
 #endif

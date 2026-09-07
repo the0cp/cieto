@@ -38,6 +38,36 @@ static DWORD WINAPI readPipeThread(LPVOID raw){
     return read->ok ? 0 : 1;
 }
 
+static void stopProc(HANDLE process, HANDLE job){
+    if(job != NULL){
+        TerminateJobObject(job, 1);
+    }
+    TerminateProcess(process, 1);
+    WaitForSingleObject(process, INFINITE);
+}
+
+static HANDLE makeJob(void){
+    HANDLE job = CreateJobObjectA(NULL, NULL);
+    if(job == NULL){
+        return NULL;
+    }
+
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION info;
+    ZeroMemory(&info, sizeof(info));
+    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if(!SetInformationJobObject(
+        job,
+        JobObjectExtendedLimitInformation,
+        &info,
+        sizeof(info)
+    )){
+        CloseHandle(job);
+        return NULL;
+    }
+
+    return job;
+}
+
 static bool makePipe(HANDLE* readEnd, HANDLE* writeEnd){
     SECURITY_ATTRIBUTES attrs;
     attrs.nLength = sizeof(attrs);
@@ -312,9 +342,7 @@ bool runProc(
     VM* vm,
     char** argv,
     const ProcOpts* opts,
-    int* code,
-    ProcBuffer* out,
-    ProcBuffer* err
+    ProcRes* res
 ){
     char* env = NULL;
     if(!buildEnv(vm, opts->env, &env)){
@@ -351,6 +379,21 @@ bool runProc(
         return false;
     }
 
+    HANDLE job = NULL;
+    if(opts->timeoutMs > 0){
+        job = makeJob();
+        if(job == NULL){
+            free(env);
+            freeProcBuffer(&cmd);
+            CloseHandle(outRead);
+            CloseHandle(outWrite);
+            CloseHandle(errRead);
+            CloseHandle(errWrite);
+            runtimeError(vm, "process.run could not create process job.\n");
+            return false;
+        }
+    }
+
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
     ZeroMemory(&si, sizeof(si));
@@ -368,7 +411,7 @@ bool runProc(
         NULL,
         NULL,
         TRUE,
-        CREATE_NO_WINDOW,
+        CREATE_NO_WINDOW | (job != NULL ? CREATE_SUSPENDED : 0),
         env,
         opts->cwd,
         &si,
@@ -384,6 +427,9 @@ bool runProc(
         DWORD errCode = GetLastError();
         CloseHandle(outRead);
         CloseHandle(errRead);
+        if(job != NULL){
+            CloseHandle(job);
+        }
 
         char msg[128];
         int len = snprintf(
@@ -395,25 +441,40 @@ bool runProc(
         if(len >= (int)sizeof(msg)){
             len = (int)sizeof(msg) - 1;
         }
-        if(len < 0 || !appendProcBuffer(err, msg, (size_t)len)){
+        if(len < 0 || !appendProcBuffer(&res->err, msg, (size_t)len)){
             runtimeError(vm, "process.run could not allocate process error.\n");
             return false;
         }
 
-        *code = 127;
+        res->code = 127;
         return true;
     }
 
-    PipeRead outJob = {outRead, out, true};
-    PipeRead errJob = {errRead, err, true};
+    if(job != NULL &&
+        (!AssignProcessToJobObject(job, pi.hProcess) || ResumeThread(pi.hThread) == (DWORD)-1)){
+        CloseHandle(outRead);
+        CloseHandle(errRead);
+        stopProc(pi.hProcess, job);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        CloseHandle(job);
+        runtimeError(vm, "process.run could not start process job.\n");
+        return false;
+    }
+
+    PipeRead outJob = {outRead, &res->out, true};
+    PipeRead errJob = {errRead, &res->err, true};
     HANDLE readers[2] = {0};
     readers[0] = CreateThread(NULL, 0, readPipeThread, &outJob, 0, NULL);
     if(readers[0] == NULL){
         CloseHandle(outRead);
         CloseHandle(errRead);
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        stopProc(pi.hProcess, job);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
+        if(job != NULL){
+            CloseHandle(job);
+        }
         runtimeError(vm, "process.run could not start output readers.\n");
         return false;
     }
@@ -421,32 +482,71 @@ bool runProc(
     readers[1] = CreateThread(NULL, 0, readPipeThread, &errJob, 0, NULL);
     if(readers[1] == NULL){
         CloseHandle(errRead);
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        stopProc(pi.hProcess, job);
         WaitForSingleObject(readers[0], INFINITE);
         CloseHandle(readers[0]);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
+        if(job != NULL){
+            CloseHandle(job);
+        }
         runtimeError(vm, "process.run could not start output readers.\n");
         return false;
     }
 
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    WaitForMultipleObjects(2, readers, TRUE, INFINITE);
+    DWORD timeout = opts->timeoutMs == 0 ? INFINITE : opts->timeoutMs;
+    DWORD waited = WaitForSingleObject(pi.hProcess, timeout);
+    bool waitOk = true;
+    if(waited == WAIT_TIMEOUT){
+        waited = WaitForSingleObject(pi.hProcess, 0);
+        if(waited == WAIT_TIMEOUT){
+            if(!TerminateJobObject(job, 1)){
+                waited = WaitForSingleObject(pi.hProcess, 0);
+                if(waited != WAIT_OBJECT_0){
+                    waitOk = false;
+                    stopProc(pi.hProcess, job);
+                }
+            }else{
+                res->timedOut = true;
+                waited = WaitForSingleObject(pi.hProcess, INFINITE);
+                waitOk = waited == WAIT_OBJECT_0;
+            }
+        }else if(waited != WAIT_OBJECT_0){
+            waitOk = false;
+            stopProc(pi.hProcess, job);
+        }
+    }else if(waited != WAIT_OBJECT_0){
+        waitOk = false;
+        stopProc(pi.hProcess, job);
+    }
+
+    if(job != NULL){
+        CloseHandle(job);
+    }
+
+    DWORD readWait = WaitForMultipleObjects(2, readers, TRUE, INFINITE);
 
     DWORD exitCode = 0;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
+    bool gotCode = res->timedOut || GetExitCodeProcess(pi.hProcess, &exitCode);
 
     CloseHandle(readers[0]);
     CloseHandle(readers[1]);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
 
+    if(!waitOk || readWait != WAIT_OBJECT_0 || !gotCode){
+        runtimeError(vm, "process.run could not wait for process.\n");
+        return false;
+    }
+
     if(!outJob.ok || !errJob.ok){
         runtimeError(vm, "process.run could not allocate process output.\n");
         return false;
     }
 
-    *code = (int)exitCode;
+    if(!res->timedOut){
+        res->code = (int)exitCode;
+    }
     return true;
 }
 

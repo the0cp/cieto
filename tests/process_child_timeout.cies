@@ -1,0 +1,4 @@
+import "os";
+import "process";
+
+process.run([os.getenv("CIETO_EXEC"), os.argv[1]]);

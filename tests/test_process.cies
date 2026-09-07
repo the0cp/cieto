@@ -3,6 +3,7 @@ import "fs";
 import "os";
 import "path";
 import "process";
+import "time";
 
 var cieto = os.getenv("CIETO_EXEC");
 assert.ok(cieto != null, "test runner provides CIETO_EXEC");
@@ -29,12 +30,14 @@ var ok = process.run([
 
 assert.eq(ok["code"], 0, "process.run success exit code");
 assert.eq(ok["ok"], true, "process.run success ok flag");
+assert.eq(ok["timedOut"], false, "process.run success timeout flag");
 assert.ok(ok["stdout"].find("process child stdout") >= 0, "process.run captures stdout");
 assert.eq(ok["stderr"], "", "process.run empty stderr on success");
 
 var fail = process.run([cieto, childErr]);
 
 assert.eq(fail["ok"], false, "process.run failure ok flag");
+assert.eq(fail["timedOut"], false, "process.run failure timeout flag");
 assert.ok(fail["code"] != 0, "process.run failure exit code");
 assert.ok(fail["stderr"].find("Division by zero") >= 0, "process.run captures stderr");
 
@@ -75,6 +78,30 @@ var badCwd = process.run([cieto, optsChild], {
 assert.eq(badCwd["code"], 127, "process.run missing cwd exit code");
 assert.eq(badCwd["ok"], false, "process.run missing cwd ok flag");
 
+var timeoutChild = "process_child_timeout.cies";
+if (!fs.exists(timeoutChild)) {
+    timeoutChild = "tests/process_child_timeout.cies";
+}
+timeoutChild = path.abs(timeoutChild);
+
+var sleepChild = "process_child_sleep.cies";
+if (!fs.exists(sleepChild)) {
+    sleepChild = "tests/process_child_sleep.cies";
+}
+sleepChild = path.abs(sleepChild);
+
+var timeoutStart = time.steady();
+var timedOut = process.run <| {
+    argv = [cieto, timeoutChild, sleepChild],
+    timeout = 0.1
+};
+var timeoutElapsed = time.steady() - timeoutStart;
+
+assert.eq(timedOut["code"], null, "process.run timeout has no exit code");
+assert.eq(timedOut["ok"], false, "process.run timeout ok flag");
+assert.eq(timedOut["timedOut"], true, "process.run timeout flag");
+assert.ok(timeoutElapsed < 5, "process.run returns promptly after timeout");
+
 var invalidChild = "process_child_invalid_opts.cies";
 if (!fs.exists(invalidChild)) {
     invalidChild = "tests/process_child_invalid_opts.cies";
@@ -92,7 +119,12 @@ var optErrs = [
     ["env_type", "env must be a Map"],
     ["env_name", "env names must be strings"],
     ["env_value", "env values must be strings"],
-    ["env_null", "env must not contain null bytes"]
+    ["env_null", "env must not contain null bytes"],
+    ["timeout_type", "timeout must be a number"],
+    ["timeout_zero", "timeout must be finite and greater than zero"],
+    ["timeout_negative", "timeout must be finite and greater than zero"],
+    ["timeout_infinite", "timeout must be finite and greater than zero"],
+    ["timeout_large", "timeout is too large"]
 ];
 
 for (var optErr : optErrs) {

@@ -874,12 +874,12 @@ import "process";
 - `process.run(argv, opts)`
 
   - *Description*: Runs a program with an argument list and an options Map.
-  - *Options*: `cwd` changes the child working directory. `env` overrides inherited environment variables.
+  - *Options*: `cwd` changes the child working directory. `env` overrides inherited environment variables. `timeout` limits the run time in seconds.
 
 - `process.run(config)`
 
   - *Description*: Runs a program using a configuration Map.
-  - *Fields*: `argv` is required. `cwd` and `env` are optional.
+  - *Fields*: `argv` is required. `cwd`, `env`, and `timeout` are optional.
 
 The argument-list form is the shortest way to run a program:
 
@@ -892,12 +892,14 @@ The options form accepts both quoted Map keys and static fields:
 ```javascript
 var quoted = process.run(["cieto", "tests/test.cies"], {
     "cwd": "./project",
-    "env": {"MODE": "release"}
+    "env": {"MODE": "release"},
+    "timeout": 5
 });
 
 var fields = process.run(["cieto", "tests/test.cies"], {
     cwd = "./project",
-    env = {MODE = "release"}
+    env = {MODE = "release"},
+    timeout = 5
 });
 ```
 
@@ -907,13 +909,15 @@ A complete configuration can be passed with a regular function call:
 var quoted = process.run({
     "argv": ["cieto", "tests/test.cies"],
     "cwd": "./project",
-    "env": {"MODE": "release"}
+    "env": {"MODE": "release"},
+    "timeout": 5
 });
 
 var fields = process.run({
     argv = ["cieto", "tests/test.cies"],
     cwd = "./project",
-    env = {MODE = "release"}
+    env = {MODE = "release"},
+    timeout = 5
 });
 ```
 
@@ -923,17 +927,23 @@ The reverse pipe passes the complete configuration as the single argument. These
 var quoted = process.run <| {
     "argv": ["cieto", "tests/test.cies"],
     "cwd": "./project",
-    "env": {"MODE": "release"}
+    "env": {"MODE": "release"},
+    "timeout": 5
 };
 
 var fields = process.run <| {
     argv = ["cieto", "tests/test.cies"],
     cwd = "./project",
-    env = {MODE = "release"}
+    env = {MODE = "release"},
+    timeout = 5
 };
 ```
 
-All forms return a Map with `code`, `ok`, `stdout`, and `stderr` fields.
+`timeout` is a finite Number greater than zero. It is measured in seconds and may be fractional. If omitted, `process.run` waits without a time limit.
+
+When a timeout expires, `process.run` terminates the process scope it created, including child processes that remain in its Windows Job or POSIX process group.
+
+All forms return a Map with `code`, `ok`, `timedOut`, `stdout`, and `stderr` fields. On timeout, `timedOut` is `true`, `ok` is `false`, and `code` is `null`; output captured before termination is preserved.
 
 ### time - Time Module
 

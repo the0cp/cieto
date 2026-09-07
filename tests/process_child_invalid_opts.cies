@@ -25,6 +25,16 @@ if (mode == "opts_type") {
     process.run({argv = ["unused"], env = {NAME = 1}});
 } else if (mode == "env_null") {
     process.run({argv = ["unused"], env = {NAME = "bad\0value"}});
+} else if (mode == "timeout_type") {
+    process.run({argv = ["unused"], timeout = "1"});
+} else if (mode == "timeout_zero") {
+    process.run({argv = ["unused"], timeout = 0});
+} else if (mode == "timeout_negative") {
+    process.run({argv = ["unused"], timeout = -1});
+} else if (mode == "timeout_infinite") {
+    process.run({argv = ["unused"], timeout = 1e999});
+} else if (mode == "timeout_large") {
+    process.run({argv = ["unused"], timeout = 4294968});
 } else {
     os.exit(2);
 }

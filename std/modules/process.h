@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 typedef struct VM VM;
 typedef struct ObjectMap ObjectMap;
@@ -17,7 +18,15 @@ typedef struct{
 typedef struct{
     const char* cwd;
     ObjectMap* env;
+    uint32_t timeoutMs;
 }ProcOpts;
+
+typedef struct{
+    int code;
+    bool timedOut;
+    ProcBuffer out;
+    ProcBuffer err;
+}ProcRes;
 
 void freeProcBuffer(ProcBuffer* buf);
 bool appendProcBuffer(ProcBuffer* buf, const char* data, size_t len);
@@ -27,9 +36,7 @@ bool runProc(
     VM* vm,
     char** argv,
     const ProcOpts* opts,
-    int* code,
-    ProcBuffer* out,
-    ProcBuffer* err
+    ProcRes* res
 );
 
 void initProcessModule(VM* vm, ObjectModule* module);
