@@ -154,6 +154,20 @@ target_link_libraries(cieto_embed_call_script
         libcieto
 )
 
+add_executable(cieto_frontend_tests
+    tests/frontend.c
+)
+
+target_include_directories(cieto_frontend_tests
+    PRIVATE
+        ${CIETO_INTERNAL_INCLUDE_DIRS}
+)
+
+target_link_libraries(cieto_frontend_tests
+    PRIVATE
+        libcieto
+)
+
 include(CTest)
 
 if(BUILD_TESTING)
@@ -270,6 +284,11 @@ if(BUILD_TESTING)
         NAME cieto_embedding_output_callback
         COMMAND $<TARGET_FILE:cieto_embed_output_callback>
     )
+
+    add_test(
+        NAME cieto_frontend
+        COMMAND $<TARGET_FILE:cieto_frontend_tests>
+    )
 endif()
 
 add_custom_target(check
@@ -281,6 +300,7 @@ add_custom_target(check
         cieto_embed_native_function
         cieto_embed_call_script
         cieto_embed_output_callback
+        cieto_frontend_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 

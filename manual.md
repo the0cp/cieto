@@ -1254,7 +1254,7 @@ print hostAdd(20, 22);
 
 ### Capturing output and errors
 
-By default, Cieto output goes to standard output and runtime error output goes to standard error. A host can redirect both streams:
+By default, Cieto output goes to standard output, while compile diagnostics and runtime errors go to standard error. A host can redirect both streams:
 
 ```c
 static void captureWrite(const char* text, size_t length, void* userData){
@@ -1266,6 +1266,8 @@ cie_vm_set_error_output(vm, captureWrite, stderr);
 ```
 
 This is useful for GUI programs, servers, tests, and plugin systems where embedded scripts should not write directly to the process console.
+
+Compile diagnostics include the source name and a 1-based line and column. The error callback receives every diagnostic produced during compilation; `cie_vm_last_error()` retains the first diagnostic as the primary error summary.
 
 ### Error handling
 

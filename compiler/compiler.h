@@ -3,6 +3,7 @@
 
 #include "vm.h"
 #include "scanner.h"
+#include "diagnostic.h"
 #include "common.h"
 
 #define LOCAL_MAX (UINT16_MAX + 1)
@@ -17,6 +18,9 @@ typedef struct{
 }Local;
 
 typedef struct{
+    Scanner scanner;
+    const char* code;
+    const char* srcName;
     Token pre;  // Previous token
     Token cur;  // Current token
     Token next;
@@ -53,6 +57,7 @@ typedef struct Compiler{
     int maxRegSlots;
     FuncType type;
     CompileOpts opts;
+    DiagSink diag;
     ObjectFunc* func;
 }Compiler;
 
@@ -89,6 +94,13 @@ typedef struct{
 
 ObjectFunc* compile(VM* vm, const char* code, const char* srcName);
 ObjectFunc* compileWithOpts(VM* vm, const char* code, const char* srcName, const CompileOpts* opts);
+ObjectFunc* compileWithDiag(
+    VM* vm,
+    const char* code,
+    const char* srcName,
+    const CompileOpts* opts,
+    const DiagSink* diag
+);
 void markCompilerRoots(VM* vm);
 static ObjectFunc* stopCompiler(Compiler* compiler);
 static int emitJmp(Compiler* compiler);

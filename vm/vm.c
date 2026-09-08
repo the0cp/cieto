@@ -268,7 +268,9 @@ InterpreterStatus interpretWithOpts(VM* vm, const char* code, const char* srcNam
     ObjectFunc* func = compileWithOpts(vm, code, srcName, opts);
 
     if(func == NULL){
-        snprintf(vm->lastError, sizeof(vm->lastError), "Compilation failed.");
+        if(vm->lastError[0] == '\0'){
+            snprintf(vm->lastError, sizeof(vm->lastError), "Compilation failed.");
+        }
         return VM_COMPILE_ERROR;
     }
 

@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#include "source.h"
+
 #define MAX_MODE_STACK 16
 
 typedef enum{
@@ -43,7 +45,8 @@ typedef enum{
 typedef struct{
     const char* head;
     const char* cur;
-    int line;
+    SourcePos pos;
+    SourcePos headPos;
     ScannerMode modeStack[MAX_MODE_STACK];
     int modeStackTop;
 }Scanner;
@@ -52,35 +55,11 @@ typedef struct{
     TokenType type;
     const char* head;
     int len;
-    int line;
+    SourceSpan span;
+    const char* message;
 }Token;
 
-void initScanner(const char* code);
-static Token scanDefault();
-static Token scanString();
-static Token scanSystem();
-Token scan();
+void initScanner(Scanner* scanner, const char* code);
+Token scan(Scanner* scanner);
 
-static inline void pushMode(ScannerMode mode);
-static inline ScannerMode popMode();
-static inline ScannerMode currentMode();
-
-static inline const char* next();
-static inline bool is_next(char c);
-
-static inline Token pack(TokenType type, const char* head, int len, int line);
-static inline Token error(const char* message, int line);
-
-static inline void skipWhitespace();
-static inline void handleLineComment();
-static inline void handleBlockComment();
-static bool handleComment();
-
-static Token handleNumber();
-static TokenType identifierType();
-static inline Token handleIdentifier();
-
-static inline bool isDigit(char c);
-static inline bool isAlpha(char c);
-
-#endif // CIETO_SCANNER_H
+#endif

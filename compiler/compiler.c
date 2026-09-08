@@ -41,6 +41,7 @@ static bool tryFoldEq(TokenType op, const ExprDesc* left, const ExprDesc* right,
 static bool cmpJmp(Compiler* compiler, ExprDesc* expr, int* jmp);
 static int emitInstruction(Compiler* compiler, Instruction instruction);
 static CompileOpts defaultCompileOpts(void);
+static void writeDiag(const Diagnostic* diag, void* userData);
 
 static void expr2Reg(Compiler* compiler, ExprDesc* expr, int reg);
 static void expr2NextReg(Compiler* compiler, ExprDesc* expr);
@@ -139,11 +140,11 @@ static int parseVar(Compiler* compiler, const char* err);
 
 static Token scanToken(Compiler* compiler){
     while(true){
-        Token token = scan();
+        Token token = scan(&compiler->parser.scanner);
         if(token.type != TOKEN_ERROR){
             return token;
         }
-        errorAt(compiler, &token, "Unexpected token: %.*s");
+        errorAt(compiler, &token, token.message);
     }
 }
 
@@ -338,7 +339,7 @@ static int emitInstruction(Compiler* compiler, Instruction instruction){
         compiler->vm, 
         &compiler->func->chunk, 
         instruction, 
-        compiler->parser.pre.line
+        (int)compiler->parser.pre.span.start.line
     );
     return (int)(compiler->func->chunk.count - 1);
 }
@@ -684,12 +685,39 @@ ObjectFunc* compile(VM* vm, const char* code, const char* srcNameStr){
 }
 
 ObjectFunc* compileWithOpts(VM* vm, const char* code, const char* srcNameStr, const CompileOpts* opts){
+    return compileWithDiag(vm, code, srcNameStr, opts, NULL);
+}
+
+ObjectFunc* compileWithDiag(
+    VM* vm,
+    const char* code,
+    const char* srcNameStr,
+    const CompileOpts* opts,
+    const DiagSink* diag
+){
+    DiagSink defaultDiag = {writeDiag, vm};
+    if(diag == NULL || diag->emit == NULL){
+        diag = &defaultDiag;
+    }
+
     Compiler* compiler = (Compiler*)reallocate(vm, NULL, 0, sizeof(Compiler));
     if(compiler == NULL){
-        fprintf(stderr, "Not enough memory to compile.\n");
-        return false;
+        Diagnostic outOfMemory = {
+            .severity = DIAG_ERROR,
+            .srcName = srcNameStr,
+            .source = code,
+            .span = {
+                .start = {.line = 1, .column = 1},
+                .end = {.line = 1, .column = 1}
+            },
+            .message = "Not enough memory to compile."
+        };
+        diag->emit(&outOfMemory, diag->userData);
+        return NULL;
     }
-    initScanner(code);
+    initScanner(&compiler->parser.scanner, code);
+    compiler->parser.code = code;
+    compiler->parser.srcName = srcNameStr;
     ObjectString* srcName = copyString(vm, srcNameStr, (int)strlen(srcNameStr));
 
     push(vm, OBJECT_VAL(srcName));
@@ -697,17 +725,13 @@ ObjectFunc* compileWithOpts(VM* vm, const char* code, const char* srcNameStr, co
     compiler->vm = vm;
     compiler->func = NULL;
     compiler->opts = opts != NULL ? *opts : defaultCompileOpts();
+    compiler->diag = *diag;
     compiler->parser.hasNext = false;
     vm->compiler = compiler;
     initCompiler(compiler, vm, enclosing, TYPE_SCRIPT, srcName);
     pop(vm);    // pop srcName
 
     advance(compiler);  // Initialize the first token
-    if(compiler->parser.cur.type == TOKEN_EOF){
-        return NULL;  // No code to compile
-    }
-    // expression(&compiler); // Start parsing the expression
-
     while(!match(compiler, TOKEN_EOF)){
         decl(compiler);
     }
@@ -803,6 +827,7 @@ static void compileFunc(Compiler* compiler, FuncType type, int destReg, Token* f
     funcCompiler->enclosing = compiler;
     funcCompiler->vm = compiler->vm;
     funcCompiler->func = NULL;  
+    funcCompiler->diag = compiler->diag;
     compiler->vm->compiler = funcCompiler;
 
     initCompiler(funcCompiler, compiler->vm, compiler, type, compiler->func->srcName);
@@ -877,7 +902,8 @@ static void compileMethod(Compiler* compiler, Token recvName, Token methodName, 
     methodCompiler->parser = compiler->parser;
     methodCompiler->enclosing = compiler;
     methodCompiler->vm = compiler->vm;
-    methodCompiler->func = NULL;  
+    methodCompiler->func = NULL;
+    methodCompiler->diag = compiler->diag;
     compiler->vm->compiler = methodCompiler;
 
     initCompiler(methodCompiler, compiler->vm, compiler, type, compiler->func->srcName);
@@ -2563,17 +2589,43 @@ static void consume(Compiler* compiler, TokenType type, const char* errMsg){
 }
 
 static void errorAt(Compiler* compiler, Token* token, const char* message){
-    const char* srcName = compiler->func->srcName != NULL 
-                            ? compiler->func->srcName->chars 
-                            : "<script>";
-
-    fprintf(stderr, "Error [%s, line %d] ",srcName, compiler->parser.cur.line);
-    if(token->type != TOKEN_EOF){
-        fprintf(stderr, "at '%.*s': ", token->len, token->head);
-    }else{
-        fprintf(stderr, "at end: ");
+    if(compiler->parser.panic){
+        return;
     }
-    fprintf(stderr, "%s", message);
-    fprintf(stderr, "\n");
+    compiler->parser.panic = true;
+
+    Diagnostic diag = {
+        .severity = DIAG_ERROR,
+        .srcName = compiler->parser.srcName,
+        .source = compiler->parser.code,
+        .span = token->span,
+        .message = message
+    };
+    compiler->diag.emit(&diag, compiler->diag.userData);
     compiler->parser.hadError = true;
+}
+
+static void writeDiag(const Diagnostic* diag, void* userData){
+    VM* vm = (VM*)userData;
+    const char* severity = diag->severity == DIAG_WARNING ? "Warning" :
+                           diag->severity == DIAG_NOTE ? "Note" : "Error";
+    const char* srcName = diag->srcName != NULL ? diag->srcName : "<script>";
+    const char* message = diag->message != NULL ? diag->message : "Unknown diagnostic.";
+
+    char text[VM_ERROR_MESSAGE_MAX];
+    snprintf(
+        text,
+        sizeof(text),
+        "%s [%s, line %u:%u]: %s",
+        severity,
+        srcName,
+        (unsigned int)diag->span.start.line,
+        (unsigned int)diag->span.start.column,
+        message
+    );
+    if(vm->lastError[0] == '\0'){
+        snprintf(vm->lastError, sizeof(vm->lastError), "%s", text);
+    }
+    vmWriteErrorCString(vm, text);
+    vmWriteErrorCString(vm, "\n");
 }

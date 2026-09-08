@@ -67,6 +67,24 @@ int main(void){
         return 1;
     }
 
+    err.length = 0;
+    err.data[0] = '\0';
+    status = cie_vm_eval(vm, "var value = ;\n", "<compile_error>");
+
+    if(status != CIE_STATUS_COMPILE_ERROR){
+        fprintf(stderr, "Expected compile error, got %s.\n", cie_status_string(status));
+        cie_vm_destroy(vm);
+        return 1;
+    }
+
+    const char* lastError = cie_vm_last_error(vm);
+    if(strstr(err.data, "<compile_error>, line 1:13") == NULL ||
+       lastError == NULL || strstr(lastError, "Expect expression") == NULL){
+        fprintf(stderr, "Unexpected compile diagnostic: [%s]\n", err.data);
+        cie_vm_destroy(vm);
+        return 1;
+    }
+
     printf("Captured output: %s", out.data);
     printf("Captured error: %s", err.data);
 
