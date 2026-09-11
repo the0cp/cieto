@@ -6,8 +6,9 @@
 #include "diagnostic.h"
 #include "common.h"
 
-#define LOCAL_MAX (UINT16_MAX + 1)
-#define REG_MAX 256
+#define REG_MAX (MASK_A + 1)
+#define UPVAL_MAX (MASK_B + 1)
+#define ARG_MAX (MASK_B - 1)
 #define LOOP_MAX 16
 #define CASE_MAX 32
 
@@ -37,7 +38,7 @@ typedef struct{
 }Loop;
 
 typedef struct{
-    uint16_t index; // pointing to local or upvalue
+    uint8_t index;  // pointing to local or upvalue
     bool isLocal;   // T: local; F: upvalue
 }Upvalue;
 
@@ -46,9 +47,9 @@ typedef struct Compiler{
     Parser parser;
     VM* vm;
     GlobalEnv* globals;   // point to defining module's global env for global access
-    Local locals[LOCAL_MAX];
+    Local locals[REG_MAX];
     int localCnt;
-    Upvalue upvalues[LOCAL_MAX];
+    Upvalue upvalues[UPVAL_MAX];
     int upvalueCnt;
     int scopeDepth;
     Loop loops[LOOP_MAX];

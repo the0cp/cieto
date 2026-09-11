@@ -1,9 +1,12 @@
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 
 #include "compiler.h"
 #include "scanner.h"
 #include "vm.h"
+
+#define TEST_SOURCE_CAP (32 * 1024)
 
 typedef struct{
     int count;
@@ -14,6 +17,11 @@ typedef struct{
     char srcName[32];
     char message[64];
 }DiagCapture;
+
+typedef struct{
+    char data[TEST_SOURCE_CAP];
+    size_t len;
+}SourceBuf;
 
 static void captureDiag(const Diagnostic* diag, void* userData){
     DiagCapture* capture = (DiagCapture*)userData;
@@ -26,6 +34,65 @@ static void captureDiag(const Diagnostic* diag, void* userData){
     capture->sourceMatches = diag->source == capture->expectedSource;
     snprintf(capture->srcName, sizeof(capture->srcName), "%s", diag->srcName);
     snprintf(capture->message, sizeof(capture->message), "%s", diag->message);
+}
+
+static bool compileRejects(VM* vm, const char* source, const char* srcName, const char* message){
+    DiagCapture capture = {.expectedSource = source};
+    DiagSink sink = {captureDiag, &capture};
+    ObjectFunc* func = compileWithDiag(vm, source, srcName, NULL, &sink);
+    return func == NULL && capture.count == 1 && vm->compiler == NULL &&
+           capture.sourceMatches && strcmp(capture.srcName, srcName) == 0 &&
+           strcmp(capture.message, message) == 0;
+}
+
+static bool appendSource(SourceBuf* source, const char* format, ...){
+    if(source->len >= sizeof(source->data)){
+        return false;
+    }
+
+    va_list args;
+    va_start(args, format);
+    int written = vsnprintf(
+        source->data + source->len,
+        sizeof(source->data) - source->len,
+        format,
+        args
+    );
+    va_end(args);
+
+    if(written < 0 || (size_t)written >= sizeof(source->data) - source->len){
+        return false;
+    }
+    source->len += (size_t)written;
+    return true;
+}
+
+static bool chunkHasOpB(const Chunk* chunk, OpCode op, int b){
+    for(size_t i = 0; i < chunk->count; i++){
+        Instruction instruction = chunk->code[i];
+        if(GET_OPCODE(instruction) == op && GET_ARG_B(instruction) == b){
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool appendParams(SourceBuf* source, int count){
+    for(int i = 0; i < count; i++){
+        if(!appendSource(source, "%sp%d", i == 0 ? "" : ",", i)){
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool appendNullArgs(SourceBuf* source, int count){
+    for(int i = 0; i < count; i++){
+        if(!appendSource(source, "%snull", i == 0 ? "" : ",")){
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool tokenIs(Token token, TokenType type, const char* text){
@@ -139,8 +206,161 @@ static int testDiagnostic(void){
     return failed;
 }
 
+static int testCompilerLimits(void){
+    SourceBuf source = {0};
+
+    if(!appendSource(&source, "func edge(") ||
+       !appendParams(&source, ARG_MAX) ||
+       !appendSource(&source, ") { var last; return; } edge(") ||
+       !appendNullArgs(&source, ARG_MAX) ||
+       !appendSource(&source, ");")){
+        fprintf(stderr, "Could not build compiler limit test source.\n");
+        return 1;
+    }
+
+    VM vm;
+    initVM(&vm, 0, NULL);
+    DiagCapture capture = {.expectedSource = source.data};
+    DiagSink sink = {captureDiag, &capture};
+    ObjectFunc* script = compileWithDiag(&vm, source.data, "limits.cies", NULL, &sink);
+
+    ObjectFunc* edge = NULL;
+    if(script != NULL){
+        for(size_t i = 0; i < script->chunk.constants.count; i++){
+            Value value = script->chunk.constants.values[i];
+            if(IS_FUNC(value)){
+                edge = AS_FUNC(value);
+                break;
+            }
+        }
+    }
+
+    int failed = 0;
+    if(script == NULL || capture.count != 0 || edge == NULL ||
+       !chunkHasOpB(&script->chunk, OP_CALL, MASK_B) ||
+       !chunkHasOpB(&edge->chunk, OP_RETURN, 1) ||
+       edge->arity != ARG_MAX || edge->maxRegSlots != REG_MAX){
+        fprintf(stderr, "Valid compiler limits were not encoded correctly.\n");
+        failed = 1;
+    }
+    if(interpret(&vm, source.data, "limits.cies") != VM_OK){
+        fprintf(stderr, "Valid compiler limits did not execute correctly.\n");
+        failed = 1;
+    }
+
+    source = (SourceBuf){0};
+    if(!appendSource(&source, "func tooMany(") ||
+       !appendParams(&source, ARG_MAX + 1) ||
+       !appendSource(&source, ") {}")){
+        fprintf(stderr, "Could not build argument overflow test source.\n");
+        freeVM(&vm);
+        return 1;
+    }
+
+    if(!compileRejects(&vm, source.data, "arg_limit.cies", "Too many function args.")){
+        fprintf(stderr, "Argument overflow was not rejected cleanly.\n");
+        failed = 1;
+    }
+
+    source = (SourceBuf){0};
+    if(!appendSource(&source, "class C {} method (c C) run(") ||
+       !appendParams(&source, ARG_MAX + 1) ||
+       !appendSource(&source, ") {}")){
+        fprintf(stderr, "Could not build method argument overflow test source.\n");
+        freeVM(&vm);
+        return 1;
+    }
+    if(!compileRejects(&vm, source.data, "method_limit.cies", "Too many method args.")){
+        fprintf(stderr, "Method argument overflow was not rejected cleanly.\n");
+        failed = 1;
+    }
+
+    source = (SourceBuf){0};
+    if(!appendSource(&source, "func f() {} f(") ||
+       !appendNullArgs(&source, ARG_MAX + 1) ||
+       !appendSource(&source, ");")){
+        fprintf(stderr, "Could not build call argument overflow test source.\n");
+        freeVM(&vm);
+        return 1;
+    }
+    if(!compileRejects(
+           &vm,
+           source.data,
+           "call_limit.cies",
+           "Cannot have more than 254 arguments."
+       )){
+        fprintf(stderr, "Call argument overflow was not rejected cleanly.\n");
+        failed = 1;
+    }
+
+    source = (SourceBuf){0};
+    if(!appendSource(&source, "func tooManyLocals() {")){
+        fprintf(stderr, "Could not build local overflow test source.\n");
+        freeVM(&vm);
+        return 1;
+    }
+    for(int i = 0; i < REG_MAX; i++){
+        if(!appendSource(&source, "var v%d;", i)){
+            fprintf(stderr, "Could not build local overflow test source.\n");
+            freeVM(&vm);
+            return 1;
+        }
+    }
+    if(!appendSource(&source, "}")){
+        fprintf(stderr, "Could not build local overflow test source.\n");
+        freeVM(&vm);
+        return 1;
+    }
+
+    if(!compileRejects(&vm, source.data, "local_limit.cies", "Too many local variables.")){
+        fprintf(stderr, "Local overflow was not rejected cleanly.\n");
+        failed = 1;
+    }
+
+    source = (SourceBuf){0};
+    if(!appendSource(&source, "func outer(") ||
+       !appendParams(&source, ARG_MAX) ||
+       !appendSource(&source, ") { func middle() {")){
+        fprintf(stderr, "Could not build upvalue overflow test source.\n");
+        freeVM(&vm);
+        return 1;
+    }
+    for(int i = 0; i < ARG_MAX; i++){
+        if(!appendSource(&source, "var l%d;", i)){
+            fprintf(stderr, "Could not build upvalue overflow test source.\n");
+            freeVM(&vm);
+            return 1;
+        }
+    }
+    if(!appendSource(&source, "return func() { outer;")){
+        fprintf(stderr, "Could not build upvalue overflow test source.\n");
+        freeVM(&vm);
+        return 1;
+    }
+    for(int i = 0; i < ARG_MAX; i++){
+        if(!appendSource(&source, "p%d;", i)){
+            fprintf(stderr, "Could not build upvalue overflow test source.\n");
+            freeVM(&vm);
+            return 1;
+        }
+    }
+    if(!appendSource(&source, "middle; l0; }; } }")){
+        fprintf(stderr, "Could not build upvalue overflow test source.\n");
+        freeVM(&vm);
+        return 1;
+    }
+
+    if(!compileRejects(&vm, source.data, "upvalue_limit.cies", "Too many upvalues.")){
+        fprintf(stderr, "Upvalue overflow was not rejected cleanly.\n");
+        failed = 1;
+    }
+
+    freeVM(&vm);
+    return failed;
+}
+
 int main(void){
-    if(testScanner() != 0 || testDiagnostic() != 0){
+    if(testScanner() != 0 || testDiagnostic() != 0 || testCompilerLimits() != 0){
         return 1;
     }
 

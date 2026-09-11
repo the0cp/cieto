@@ -846,7 +846,7 @@ static void compileFunc(Compiler* compiler, FuncType type, int destReg, Token* f
     if(!checkType(funcCompiler, TOKEN_RIGHT_PAREN)){
         do{
             funcCompiler->func->arity++;
-            if(funcCompiler->func->arity > 255){
+            if(funcCompiler->func->arity > ARG_MAX){
                 errorAt(funcCompiler, &funcCompiler->parser.cur, "Too many function args.");
             }
             int constant = parseVar(funcCompiler, "Expect param name.");
@@ -923,7 +923,7 @@ static void compileMethod(Compiler* compiler, Token recvName, Token methodName, 
     if(!checkType(methodCompiler, TOKEN_RIGHT_PAREN)){
         do{
             methodCompiler->func->arity++;
-            if(methodCompiler->func->arity > 255){
+            if(methodCompiler->func->arity > ARG_MAX){
                 errorAt(methodCompiler, &methodCompiler->parser.cur, "Too many method args.");
             }
             int constant = parseVar(methodCompiler, "Expect param name.");
@@ -1599,9 +1599,7 @@ static void returnStmt(Compiler* compiler){
         if(compiler->type == TYPE_INITIALIZER){
             emitABC(compiler, OP_RETURN, 0, 2, 0);
         }else{
-            int reg = getFreeReg(compiler);
-            emitABC(compiler, OP_LOADNULL, reg, 0, 0);
-            emitABC(compiler, OP_RETURN, reg, 2, 0);
+            emitABC(compiler, OP_RETURN, 0, 1, 0);
         }
     }else{
         if(compiler->type == TYPE_INITIALIZER){
@@ -1833,8 +1831,8 @@ static int identifierGlobalSlot(Compiler* compiler){
 }
 
 static void addLocal(Compiler* compiler, Token name){
-    if(compiler->localCnt == LOCAL_MAX){
-        errorAt(compiler, &name, "Too many local variables");
+    if(compiler->localCnt >= REG_MAX){
+        errorAt(compiler, &name, "Too many local variables.");
         return;
     }
     Local* local = &compiler->locals[compiler->localCnt++];
@@ -1900,14 +1898,14 @@ static int resolveLocal(Compiler* compiler, Token* name){
     return -1;
 }
 
-static int addUpvalue(Compiler* compiler, uint16_t index, bool isLocal){
+static int addUpvalue(Compiler* compiler, uint8_t index, bool isLocal){
     for(int i = 0; i < compiler->upvalueCnt; i++){
         if(compiler->upvalues[i].index == index && compiler->upvalues[i].isLocal == isLocal){
             return i;
         }
     }
 
-    if(compiler->upvalueCnt == LOCAL_MAX){
+    if(compiler->upvalueCnt >= UPVAL_MAX){
         errorAt(compiler, &compiler->parser.pre, "Too many upvalues.");
         return 0;
     }
@@ -1923,13 +1921,13 @@ static int resolveUpvalue(Compiler* compiler, Token* name){
     
     int localIndex = resolveLocal(compiler->enclosing, name);
     if(localIndex != -1){
-        return addUpvalue(compiler, (uint16_t)localIndex, true);
+        return addUpvalue(compiler, (uint8_t)localIndex, true);
     }
 
     int upvalueIndex = resolveUpvalue(compiler->enclosing, name);
     // recursive
     if(upvalueIndex != -1){
-        return addUpvalue(compiler, (uint16_t)upvalueIndex, false);
+        return addUpvalue(compiler, (uint8_t)upvalueIndex, false);
     }
 
     return -1;
@@ -1977,9 +1975,7 @@ static ObjectFunc* stopCompiler(Compiler* compiler){
     if(compiler->type == TYPE_INITIALIZER){
         emitABC(compiler, OP_RETURN, 0, 2, 0);
     }else{
-        int reg = getFreeReg(compiler);
-        emitABC(compiler, OP_LOADNULL, reg, 0, 0);
-        emitABC(compiler, OP_RETURN, reg, 2, 0);
+        emitABC(compiler, OP_RETURN, 0, 1, 0);
     }
 
     ObjectFunc* func = compiler->func;
@@ -2307,21 +2303,29 @@ static int argList(Compiler* compiler, ExprDesc* func){
 
     if(!match(compiler, TOKEN_RIGHT_PAREN)){
         do{
+            // Report error first, 
+            // then parse excess arguments for recovery without materializing them
+            if(argCnt >= ARG_MAX){
+                errorAt(compiler, &compiler->parser.cur, "Cannot have more than 254 arguments.");
+            }
+
             ExprDesc arg;
             expression(compiler, &arg);
-            int targetReg = funcReg + argCnt + 1;  
-            // function is at funcReg, arguments start from funcReg + 1
-            expr2Reg(compiler, &arg, targetReg);
-            setFreeReg(compiler, targetReg + 1);
-            argCnt++;
-            if(argCnt >= 255){
-                errorAt(compiler, &compiler->parser.pre, "Cannot have more than 255 arguments.");
+            if(argCnt >= ARG_MAX){
+                // ignore the rest of the arguments
+                freeExpr(compiler, &arg);
+            }else{
+                int targetReg = funcReg + argCnt + 1;
+                // function is at funcReg, arguments start from funcReg + 1
+                expr2Reg(compiler, &arg, targetReg);
+                setFreeReg(compiler, targetReg + 1);
             }
+            argCnt++;
         }while(match(compiler, TOKEN_COMMA));
 
         consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
     }
-    return argCnt;
+    return argCnt > ARG_MAX ? ARG_MAX : argCnt;
 }
 
 static void handleCall(Compiler* compiler, ExprDesc* expr, bool canAssign){
