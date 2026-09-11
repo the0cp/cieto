@@ -637,6 +637,7 @@ static void initCompiler(Compiler* compiler, VM* vm, Compiler* enclosing, FuncTy
     // point to defining module's global env for global access
     if(enclosing != NULL){
         compiler->opts = enclosing->opts;
+        compiler->diag = enclosing->diag;
     }
 
     compiler->type = type;
@@ -826,8 +827,7 @@ static void compileFunc(Compiler* compiler, FuncType type, int destReg, Token* f
 
     funcCompiler->enclosing = compiler;
     funcCompiler->vm = compiler->vm;
-    funcCompiler->func = NULL;  
-    funcCompiler->diag = compiler->diag;
+    funcCompiler->func = NULL;
     compiler->vm->compiler = funcCompiler;
 
     initCompiler(funcCompiler, compiler->vm, compiler, type, compiler->func->srcName);
@@ -903,7 +903,6 @@ static void compileMethod(Compiler* compiler, Token recvName, Token methodName, 
     methodCompiler->enclosing = compiler;
     methodCompiler->vm = compiler->vm;
     methodCompiler->func = NULL;
-    methodCompiler->diag = compiler->diag;
     compiler->vm->compiler = methodCompiler;
 
     initCompiler(methodCompiler, compiler->vm, compiler, type, compiler->func->srcName);

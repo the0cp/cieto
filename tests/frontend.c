@@ -116,6 +116,18 @@ static int testDiagnostic(void){
         failed = 1;
     }
 
+    const char* deferSource = "func test() { defer print ; }";
+    capture = (DiagCapture){.expectedSource = deferSource};
+    func = compileWithDiag(&vm, deferSource, "defer.cies", NULL, &sink);
+    if(func != NULL || capture.count != 1 || vm.compiler != NULL ||
+       !capture.sourceMatches ||
+       strcmp(capture.srcName, "defer.cies") != 0 ||
+       capture.span.start.line != 1 || capture.span.start.column != 27 ||
+       strcmp(capture.message, "Expect expression") != 0){
+        fprintf(stderr, "Nested defer error did not cleanly finish compilation.\n");
+        failed = 1;
+    }
+
     capture = (DiagCapture){0};
     func = compileWithDiag(&vm, "", "empty.cies", NULL, &sink);
     if(func == NULL || capture.count != 0 || vm.compiler != NULL){
