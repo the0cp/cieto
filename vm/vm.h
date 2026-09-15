@@ -25,6 +25,7 @@ typedef void(*VMWriteFunc)(const char* text, size_t length, void* userData);
 
 typedef struct CompileOpts{
     bool foldConst;
+    bool eliminateMoves;
 }CompileOpts;
 
 typedef struct CallFrame{
@@ -132,8 +133,8 @@ InterpreterStatus interpretWithOpts(
 InterpreterStatus vmCallValue(VM* vm, Value callee, int argCount, const Value* args, Value* result);
 static InterpreterStatus run(VM* vm);
 
-static bool call(VM* vm, ObjectClosure* closure, int argCnt);
-static bool callValue(VM* vm, Value callee, int argCnt);
+static bool call(VM* vm, ObjectClosure* closure, int argCnt, Value* initializedTop);
+static bool callValue(VM* vm, Value callee, int argCnt, Value* initializedTop);
 
 void vmWrite(VM* vm, const char* text, size_t length);
 void vmWriteCString(VM* vm, const char* text);

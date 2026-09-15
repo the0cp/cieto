@@ -345,9 +345,10 @@ static int emitInstruction(Compiler* compiler, Instruction instruction){
 }
 
 static CompileOpts defaultCompileOpts(void){
-    CompileOpts opts;
-    opts.foldConst = true;
-    return opts;
+    return (CompileOpts){
+        .foldConst = true,
+        .eliminateMoves = true
+    };
 }
 
 static int emitABC(Compiler* compiler, uint8_t op, uint8_t a, uint8_t b, uint8_t c){
@@ -420,6 +421,32 @@ static void freeExpr(Compiler* compiler, ExprDesc* expr){
         freeRegs(compiler, 1);
         expr->type = EXPR_VOID;
     }
+}
+
+static bool eliminateLastLocalMove(Compiler* compiler, ExprDesc* expr){
+    Chunk* chunk = &compiler->func->chunk;
+    if(!compiler->opts.eliminateMoves || expr->type != EXPR_REG || chunk->count == 0){
+        return false;
+    }
+
+    int destReg = expr->data.loc.index;
+    if(destReg < firstTempReg(compiler) || destReg != compiler->freeReg - 1){
+        return false;
+    }
+
+    Instruction move = chunk->code[chunk->count - 1];
+    int srcReg = GET_ARG_B(move);
+    if(GET_OPCODE(move) != OP_MOVE ||
+       GET_ARG_A(move) != destReg ||
+       srcReg >= firstTempReg(compiler)){
+        return false;
+    }
+
+    chunk->count--;
+    chunk->lineCount--;
+    freeRegs(compiler, 1);
+    initExpr(expr, EXPR_LOCAL, srcReg);
+    return true;
 }
 
 static void unplugExpr(Compiler* compiler, ExprDesc* expr){
@@ -622,6 +649,9 @@ static void storeVar(Compiler* compiler, ExprDesc* var, ExprDesc* val){
 static void emitBinaryOp(Compiler* compiler, OpCode op, ExprDesc* left, ExprDesc* right){
     expr2NextReg(compiler, left);
     expr2NextReg(compiler, right);
+
+    eliminateLastLocalMove(compiler, right);
+    eliminateLastLocalMove(compiler, left);
 
     int instructionIndex = emitABC(compiler, op, 0, left->data.loc.index, right->data.loc.index);
     freeExpr(compiler, right);

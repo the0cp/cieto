@@ -55,7 +55,10 @@ int main(int argc, const char* argv[]){
             scriptArgsSt++;
         }
 
-        CompileOpts opts = {false};
+        CompileOpts opts = {
+            .foldConst = false,
+            .eliminateMoves = false
+        };
 
         if(scriptArgsSt < argc && (strcmp(argv[scriptArgsSt], "--dump") == 0 || strcmp(argv[scriptArgsSt], "-d") == 0)){
             scriptArgsSt++;

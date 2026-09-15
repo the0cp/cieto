@@ -1,0 +1,21 @@
+import "harness.cies";
+
+func work(size) {
+    var total = 0;
+    var needle = 123456;
+    for (var i = 0; i < size; i++) {
+        if (needle == 123456) {
+            total = total + 1;
+        }
+    }
+    return total;
+}
+
+var size = 5000000;
+var expected = 5000000;
+if (harness.smoke()) {
+    size = 1000;
+    expected = 1000;
+}
+
+harness.run("equality_hot", work, size, expected);

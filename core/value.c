@@ -174,47 +174,51 @@ bool isTruthy(Value value){
 }
 
 bool isEqual(Value a, Value b){
-    if(getValueType(a) != getValueType(b)){
+    if(IS_NUM(a)){
+        return IS_NUM(b) && AS_NUM(a) == AS_NUM(b);
+    }
+    if(IS_NULL(a)){
+        return IS_NULL(b);
+    }
+    if(IS_BOOL(a)){
+        return a == b;
+    }
+    if(!IS_OBJECT(a) || !IS_OBJECT(b)){
         return false;
     }
 
-    switch(getValueType(a)){
-        case VALUE_NULL:    return true;  // Both are null
-        case VALUE_BOOL:    return AS_BOOL(a) == AS_BOOL(b);
-        case VALUE_NUM:     return AS_NUM(a) == AS_NUM(b);
-        case VALUE_OBJECT: {
-            Object* objA = AS_OBJECT(a);
-            Object* objB = AS_OBJECT(b);
+    Object* objA = AS_OBJECT(a);
+    Object* objB = AS_OBJECT(b);
+    if(objA == objB){
+        return true;
+    }
+    if(objA->type != objB->type){
+        return false;
+    }
 
-            if(objA == objB){
-                return true;
-            }
+    switch(objA->type){
+        case OBJECT_STRING: {
+            ObjectString* strA = AS_STRING(a);
+            ObjectString* strB = AS_STRING(b);
+            if(strA->hash != strB->hash) return false;
+            if(strA->length != strB->length) return false;
 
-            if(IS_STRING(a) && IS_STRING(b)){
-                ObjectString* strA = AS_STRING(a);
-                ObjectString* strB = AS_STRING(b);
-                if(strA->hash != strB->hash) return false;
-                if(strA->length != strB->length) return false;
+            return memcmp(strA->chars, strB->chars, strA->length) == 0;
+        }
+        case OBJECT_LIST: {
+            ObjectList* listA = AS_LIST(a);
+            ObjectList* listB = AS_LIST(b);
 
-                return memcmp(strA->chars, strB->chars, strA->length) == 0;
-            }
+            if(listA->count != listB->count) return false;
 
-            if(IS_LIST(a) && IS_LIST(b)){
-                ObjectList* listA = AS_LIST(a);
-                ObjectList* listB = AS_LIST(b);
-
-                if(listA->count != listB->count) return false;
-
-                for(int i = 0; i < listA->count; i++){
-                    if(!isEqual(listA->items[i], listB->items[i])){
-                        return false;
-                    }
+            for(int i = 0; i < listA->count; i++){
+                if(!isEqual(listA->items[i], listB->items[i])){
+                    return false;
                 }
-                return true;
             }
-            return false;
+            return true;
         }
         default:
-            return false;  // Unsupported type comparison
+            return false;
     }
 }

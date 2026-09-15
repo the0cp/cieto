@@ -77,6 +77,33 @@ static bool chunkHasOpB(const Chunk* chunk, OpCode op, int b){
     return false;
 }
 
+static int chunkCountOp(const Chunk* chunk, OpCode op){
+    int count = 0;
+    for(size_t i = 0; i < chunk->count; i++){
+        if(GET_OPCODE(chunk->code[i]) == op){
+            count++;
+        }
+    }
+    return count;
+}
+
+static ObjectFunc* findFunction(const ObjectFunc* script, const char* name){
+    size_t nameLen = strlen(name);
+    for(size_t i = 0; i < script->chunk.constants.count; i++){
+        Value value = script->chunk.constants.values[i];
+        if(!IS_FUNC(value)){
+            continue;
+        }
+
+        ObjectFunc* func = AS_FUNC(value);
+        if(func->name != NULL && func->name->length == (int)nameLen &&
+           memcmp(func->name->chars, name, nameLen) == 0){
+            return func;
+        }
+    }
+    return NULL;
+}
+
 static bool appendParams(SourceBuf* source, int count){
     for(int i = 0; i < count; i++){
         if(!appendSource(source, "%sp%d", i == 0 ? "" : ",", i)){
@@ -359,8 +386,38 @@ static int testCompilerLimits(void){
     return failed;
 }
 
+static int testMoveElimination(void){
+    const char* source = "func add3(a, b, c) { return a + b + c; }";
+    VM vm;
+    initVM(&vm, 0, NULL);
+
+    ObjectFunc* script = compile(&vm, source, "move_elimination.cies");
+    ObjectFunc* add3 = script != NULL ? findFunction(script, "add3") : NULL;
+    if(add3 == NULL || chunkCountOp(&add3->chunk, OP_MOVE) != 0){
+        fprintf(stderr, "Optimized binary expression retained redundant moves.\n");
+        freeVM(&vm);
+        return 1;
+    }
+
+    CompileOpts noOpts = {
+        .foldConst = false,
+        .eliminateMoves = false
+    };
+    script = compileWithOpts(&vm, source, "move_elimination_no_opt.cies", &noOpts);
+    add3 = script != NULL ? findFunction(script, "add3") : NULL;
+    if(add3 == NULL || chunkCountOp(&add3->chunk, OP_MOVE) == 0){
+        fprintf(stderr, "--no-opt bytecode unexpectedly eliminated moves.\n");
+        freeVM(&vm);
+        return 1;
+    }
+
+    freeVM(&vm);
+    return 0;
+}
+
 int main(void){
-    if(testScanner() != 0 || testDiagnostic() != 0 || testCompilerLimits() != 0){
+    if(testScanner() != 0 || testDiagnostic() != 0 ||
+       testCompilerLimits() != 0 || testMoveElimination() != 0){
         return 1;
     }
 

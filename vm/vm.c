@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -280,7 +281,7 @@ InterpreterStatus interpretWithOpts(VM* vm, const char* code, const char* srcNam
     pop(vm);    // pop func
     push(vm, OBJECT_VAL(closure));
 
-    if(!call(vm, closure, 0)){
+    if(!call(vm, closure, 0, vm->stackTop)){
         recover(vm);
         return VM_RUNTIME_ERROR;
     }
@@ -986,7 +987,11 @@ static InterpreterStatus run(VM* vm){
             runtimeError(vm, "Runtime error: Division by zero");
             return VM_RUNTIME_ERROR;
         }
-        R(GET_ARG_A(instruction)) = NUM_VAL(fmod(AS_NUM(b), divisor));
+        double dividend = AS_NUM(b);
+        double result = fabs(dividend) < fabs(divisor)
+            ? dividend
+            : fmod(dividend, divisor);
+        R(GET_ARG_A(instruction)) = NUM_VAL(result);
     } DISPATCH();
 
     DO_OP_PRINT:
@@ -1037,7 +1042,7 @@ static InterpreterStatus run(VM* vm){
 
         int frameCnt = vm->frameCount;
 
-        if(!callValue(vm, callee, argCount)){
+        if(!callValue(vm, callee, argCount, oldStackTop)){
             return VM_RUNTIME_ERROR;
         }
 
@@ -1072,7 +1077,7 @@ static InterpreterStatus run(VM* vm){
             vm->stackTop[0] = OBJECT_VAL(result.closure);
             vm->stackTop++;
 
-            if(!call(vm, result.closure, 0)){
+            if(!call(vm, result.closure, 0, vm->stackTop)){
                 popGlobal(vm);
                 result.module->status = MODULE_ERROR;
                 return VM_RUNTIME_ERROR;
@@ -1501,7 +1506,7 @@ static InterpreterStatus run(VM* vm){
             vm->stackTop[0] = OBJECT_VAL(deferClosure);
             vm->stackTop++;
 
-            call(vm, deferClosure, 0);
+            call(vm, deferClosure, 0, vm->stackTop);
             frame = &vm->frames[vm->frameCount - 1];
             DISPATCH();
         }
@@ -1535,7 +1540,7 @@ static InterpreterStatus run(VM* vm){
 
 }
 
-static bool call(VM* vm, ObjectClosure* closure, int argCnt){
+static bool call(VM* vm, ObjectClosure* closure, int argCnt, Value* initializedTop){
     if(argCnt != closure->func->arity){
         runtimeError(vm, "Expected %d args but got %d.", closure->func->arity, argCnt);
         return false;
@@ -1559,16 +1564,22 @@ static bool call(VM* vm, ObjectClosure* closure, int argCnt){
     frame->globals = closure->globals;
     frame->deferCnt = 0;
 
-    for(int i = argCnt + 1; i < closure->func->maxRegSlots; i++){
-        frame->base[i] = NULL_VAL;
+    Value* firstLocal = frame->base + argCnt + 1;
+    Value* newStackTop = frame->base + closure->func->maxRegSlots;
+    assert(initializedTop >= firstLocal);
+    assert(initializedTop <= vm->stack + STACK_MAX);
+
+    Value* clearFrom = initializedTop > firstLocal ? initializedTop : firstLocal;
+    for(Value* slot = clearFrom; slot < newStackTop; slot++){
+        *slot = NULL_VAL;
     }
-   
-    vm->stackTop = frame->base + closure->func->maxRegSlots;
+
+    vm->stackTop = newStackTop;
 
     return true;
 }
 
-static bool callValue(VM* vm, Value callee, int argCnt){
+static bool callValue(VM* vm, Value callee, int argCnt, Value* initializedTop){
     if(IS_OBJECT(callee)){
         switch(OBJECT_TYPE(callee)){
             case OBJECT_CLASS:{
@@ -1576,7 +1587,7 @@ static bool callValue(VM* vm, Value callee, int argCnt){
                 vm->stackTop[-argCnt - 1] = OBJECT_VAL(newInstance(vm, klass));
                 Value initializer;
                 if(tableGet(vm, &klass->methods, OBJECT_VAL(vm->initString), &initializer)){
-                    if (!call(vm, AS_CLOSURE(initializer), argCnt)){
+                    if (!call(vm, AS_CLOSURE(initializer), argCnt, initializedTop)){
                         return false;
                     }
                 }else if(argCnt != 0){  // no initializer found but got arguments
@@ -1601,11 +1612,11 @@ static bool callValue(VM* vm, Value callee, int argCnt){
                     push(vm, result);
                     return true;
                 }else{
-                    return call(vm, AS_CLOSURE(OBJECT_VAL(method)), argCnt);
+                    return call(vm, AS_CLOSURE(OBJECT_VAL(method)), argCnt, initializedTop);
                 }
             }
             case OBJECT_CLOSURE:
-                return call(vm, AS_CLOSURE(callee), argCnt);
+                return call(vm, AS_CLOSURE(callee), argCnt, initializedTop);
             case OBJECT_CFUNC:{
                 CFunc cfunc = AS_CFUNC(callee);
                 Value result = cfunc(vm, argCnt, vm->stackTop - argCnt);
@@ -1651,7 +1662,7 @@ InterpreterStatus vmCallValue(
         push(vm, args[i]);
     }
 
-    if(!callValue(vm, callee, argCnt)){
+    if(!callValue(vm, callee, argCnt, vm->stackTop)){
         recover(vm);
         return VM_RUNTIME_ERROR;
     }
