@@ -2240,7 +2240,7 @@ static void handleString(Compiler* compiler, ExprDesc* expr, bool canAssign){
                         case '$': unescaped_chars[unescaped_len++] = '$'; break;
                         case '0': unescaped_chars[unescaped_len++] = '\0'; break;
                         default: {
-                            char err_msg[30];
+                            char err_msg[sizeof("Invalid escape character '\\x'.")];
                             snprintf(err_msg, sizeof(err_msg), "Invalid escape character '\\%c'.", token->head[i]);
                             errorAt(compiler, token, err_msg);
                             unescaped_chars[unescaped_len++] = token->head[i]; 

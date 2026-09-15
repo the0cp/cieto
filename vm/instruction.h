@@ -160,17 +160,17 @@ typedef enum{
 
 // Constructors
 #define CREATE_ABC(op, a, b, c) \
-    ((Instruction)((op & MASK_OP) << POS_OP) | \
-    ((Instruction)(a & MASK_A) << POS_A) | \
-    ((Instruction)(b & MASK_B) << POS_B) | \
-    ((Instruction)(c & MASK_C) << POS_C))
+    ((Instruction)(((op) & MASK_OP) << POS_OP) | \
+    ((Instruction)((a) & MASK_A) << POS_A) | \
+    ((Instruction)((b) & MASK_B) << POS_B) | \
+    ((Instruction)((c) & MASK_C) << POS_C))
 
 #define CREATE_ABx(op, a, bx) \
-    ((Instruction)((op & MASK_OP) << POS_OP) | \
-    ((Instruction)(a & MASK_A) << POS_A) | \
-    ((Instruction)(bx & MASK_BX) << POS_BX))
+    ((Instruction)(((op) & MASK_OP) << POS_OP) | \
+    ((Instruction)((a) & MASK_A) << POS_A) | \
+    ((Instruction)((bx) & MASK_BX) << POS_BX))
 
 #define CREATE_AsBx(op, a, sbx) \
-    (CREATE_ABx(op, a, (sbx + OFFSET_sBx)))
+    (CREATE_ABx((op), (a), ((sbx) + OFFSET_sBx)))
 
 #endif // CIETO_INSTRUCTION_H
