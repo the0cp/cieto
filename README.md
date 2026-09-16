@@ -13,6 +13,7 @@ Cieto takes its name from Latin *ciētō*, a future imperative form of *cieō* (
 - Modules
 - Lists, maps, strings, and slicing
 - Small standard library
+- Direct child-process execution with captured output and timeouts
 - Manual / automatic GC modes
 
 See the included `manual.md` for a detailed language reference and usage examples: [https://github.com/the0cp/cieto/blob/master/manual.md](https://github.com/the0cp/cieto/blob/master/manual.md)
@@ -21,6 +22,8 @@ See the included `manual.md` for a detailed language reference and usage example
 
 ```javascript
 # A tiny Cieto demo:
+
+import "process";
 
 func slug(s) {
     return s.trim().lower().replace(" ", "-");
@@ -50,6 +53,14 @@ for (var topic : topics) {
 print "path: ${"examples" / "data" / "sample.txt"}";
 print "slice: ${"register-vm"[0:8]}, reverse: ${"Cieto"[::-1]}";
 
+var quoted = process.run({
+    "argv": ["cieto", "examples/argv_echo.cies", "declarative"],
+    "cwd": ".",
+    "env": {"MODE": "release"},
+    "timeout": 5
+});
+print quoted["stdout"];
+
 $> echo hello from the host shell
 print "shell exit code = ${_exit_code}";
 ```
@@ -69,13 +80,16 @@ Try more examples:
 
 ## Building
 
-Requirements: gcc and CMake. The code uses GCC-specific techniques such as computed goto / dispatch table, so GCC is required. On Windows, GCC can be installed through MinGW-w64, Chocolatey, or MSYS2.
+Requirements: GCC and CMake 3.21 or newer. The code uses GCC-specific techniques such as computed goto / dispatch table, so GCC is required. On Windows, GCC can be installed through MinGW-w64, Chocolatey, or MSYS2.
 
 Clone the repo:
 
 ```sh
 git clone --recursive https://github.com/the0cp/cieto.git
+cd cieto
 ```
+
+If the repository was cloned without `--recursive`, initialize its dependencies with `git submodule update --init --recursive`.
 
 Configure and build a debug version:
 
@@ -221,7 +235,13 @@ or for release:
 ctest --preset release --output-on-failure
 ```
 
-CTest runs the script suite normally and compares the same scripts against `--no-opt`, so compiler optimizations must preserve stdout, stderr, and exit status.
+On Windows:
+
+```powershell
+ctest --preset release-windows --output-on-failure
+```
+
+CTest covers the script suite in optimized and `--no-opt` modes, embedding API tests, frontend/compiler checks, numeric semantics, and benchmark smoke tests. Compiler optimizations must preserve stdout, stderr, exit status, and runtime behavior.
 
 ## Usage
 
