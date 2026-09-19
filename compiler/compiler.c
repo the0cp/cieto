@@ -658,12 +658,6 @@ static void storeVar(Compiler* compiler, ExprDesc* var, ExprDesc* val){
 }
 
 static void emitBinaryOp(Compiler* compiler, OpCode op, ExprDesc* left, ExprDesc* right){
-    expr2NextReg(compiler, left);
-    expr2NextReg(compiler, right);
-
-    eliminateLastLocalMove(compiler, right);
-    eliminateLastLocalMove(compiler, left);
-
     int instructionIndex = emitABC(compiler, op, 0, left->data.loc.index, right->data.loc.index);
     freeExpr(compiler, right);
     freeExpr(compiler, left);
@@ -2140,6 +2134,12 @@ static void handleBinary(Compiler* compiler, ExprDesc* expr, bool canAssign){
         }
     }
 
+    // Check the left MOVE before materializing the right operand.
+    expr2NextReg(compiler, expr);
+    eliminateLastLocalMove(compiler, expr);
+    expr2NextReg(compiler, &right);
+    eliminateLastLocalMove(compiler, &right);
+
     switch(type){
         case TOKEN_PLUS:            emitBinaryOp(compiler, OP_ADD, expr, &right); break;
         case TOKEN_MINUS:           emitBinaryOp(compiler, OP_SUB, expr, &right); break;
@@ -2164,16 +2164,16 @@ static void handleBinary(Compiler* compiler, ExprDesc* expr, bool canAssign){
                 default:                    op = OP_EQ; break;  // Should not reach here
             }
             
-            expr2NextReg(compiler, expr);
-            expr2NextReg(compiler, &right);
-
             emitABC(compiler, op, expectTrue, expr->data.loc.index, right.data.loc.index);
-            int targetReg = expr->data.loc.index;
+            freeExpr(compiler, &right);
+            freeExpr(compiler, expr);
+
+            int targetReg = getFreeReg(compiler);
+            reserveReg(compiler, 1);
             emitABC(compiler, OP_LOADBOOL, targetReg, 1, 1);
             // load true into targetReg, and jump over the next instruction
             emitABC(compiler, OP_LOADBOOL, targetReg, 0, 0);
             // load false into targetReg
-            freeExpr(compiler, &right);
             initExpr(expr, EXPR_REG, targetReg);
             break;
         }

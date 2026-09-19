@@ -402,14 +402,52 @@ static int testCompilerLimits(void){
 }
 
 static int testMoveElimination(void){
-    const char* source = "func add3(a, b, c) { return a + b + c; }";
+    const char* source =
+        "func add3(a, b, c) { return a + b + c; }"
+        "func addConst(value) { return value + 3; }"
+        "func preserveAssignment(value) { return value + (value = 2); }"
+        "func preserveCall(value) {"
+        "  func change() { value = 5; return 2; }"
+        "  return value + change();"
+        "}"
+        "func compareConst(value) { return value < 3; }"
+        "func compareLocals(left, right) { return left < right; }"
+        "func ordered(left, right) { if (left < right) return true; return false; }"
+        "func preserveCompareAssignment(value) { return value < (value = 2); }"
+        "func preserveCompareCall(value) {"
+        "  func change() { value = 5; return 2; }"
+        "  return value < change();"
+        "}"
+        "if (addConst(4) != 7) 0();"
+        "if (preserveAssignment(1) != 3) 0();"
+        "if (preserveCall(1) != 3) 0();"
+        "if (!compareConst(2)) 0();"
+        "if (!compareLocals(1, 2)) 0();"
+        "if (!ordered(1, 2)) 0();"
+        "if (!preserveCompareAssignment(1)) 0();"
+        "if (!preserveCompareCall(1)) 0();";
     VM vm;
     initVM(&vm, 0, NULL);
 
     ObjectFunc* script = compile(&vm, source, "move_elimination.cies");
     ObjectFunc* add3 = script != NULL ? findFunction(script, "add3") : NULL;
-    if(add3 == NULL || chunkCountOp(&add3->chunk, OP_MOVE) != 0){
+    ObjectFunc* addConst = script != NULL ? findFunction(script, "addConst") : NULL;
+    ObjectFunc* compareConst = script != NULL ? findFunction(script, "compareConst") : NULL;
+    ObjectFunc* compareLocals = script != NULL ? findFunction(script, "compareLocals") : NULL;
+    ObjectFunc* ordered = script != NULL ? findFunction(script, "ordered") : NULL;
+    if(add3 == NULL || addConst == NULL || compareConst == NULL ||
+       compareLocals == NULL || ordered == NULL ||
+       chunkCountOp(&add3->chunk, OP_MOVE) != 0 ||
+       chunkCountOp(&addConst->chunk, OP_MOVE) != 0 ||
+       chunkCountOp(&compareConst->chunk, OP_MOVE) != 0 ||
+       chunkCountOp(&compareLocals->chunk, OP_MOVE) != 0 ||
+       chunkCountOp(&ordered->chunk, OP_MOVE) != 0){
         fprintf(stderr, "Optimized binary expression retained redundant moves.\n");
+        freeVM(&vm);
+        return 1;
+    }
+    if(interpret(&vm, source, "move_elimination.cies") != VM_OK){
+        fprintf(stderr, "Move elimination changed binary-expression evaluation order.\n");
         freeVM(&vm);
         return 1;
     }
@@ -419,8 +457,11 @@ static int testMoveElimination(void){
         .eliminateMoves = false
     };
     script = compileWithOpts(&vm, source, "move_elimination_no_opt.cies", &noOpts);
-    add3 = script != NULL ? findFunction(script, "add3") : NULL;
-    if(add3 == NULL || chunkCountOp(&add3->chunk, OP_MOVE) == 0){
+    addConst = script != NULL ? findFunction(script, "addConst") : NULL;
+    compareLocals = script != NULL ? findFunction(script, "compareLocals") : NULL;
+    if(addConst == NULL || compareLocals == NULL ||
+       chunkCountOp(&addConst->chunk, OP_MOVE) == 0 ||
+       chunkCountOp(&compareLocals->chunk, OP_MOVE) == 0){
         fprintf(stderr, "--no-opt bytecode unexpectedly eliminated moves.\n");
         freeVM(&vm);
         return 1;

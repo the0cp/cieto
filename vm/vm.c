@@ -105,7 +105,7 @@ void resetStack(VM* vm){
 void recover(VM* vm){
     resetStack(vm);
     vm->frameCount = 0;
-    vm->preparedInvokeCnt = 0;
+    vm->pendingInvokeCnt = 0;
     vm->openUpvalues = NULL;
     vm->globalCnt = 0;
     vm->curGlobal = &vm->globals;
@@ -118,9 +118,9 @@ void initVM(VM* vm, int argc, const char* argv[]){
     vm->objects = NULL;
     vm->openUpvalues = NULL;
     vm->frameCount = 0;
-    vm->preparedInvokes = NULL;
-    vm->preparedInvokeCnt = 0;
-    vm->preparedInvokeCapacity = 0;
+    vm->pendingInvokes = NULL;
+    vm->pendingInvokeCnt = 0;
+    vm->pendingInvokeCapacity = 0;
 
     srand((unsigned int)time(NULL));
     uint64_t p1 = (uint64_t)rand();
@@ -178,10 +178,10 @@ void freeVM(VM* vm){
     vm->globalCnt = 0;
     vm->curGlobal = NULL;
     vm->openUpvalues = NULL;
-    FREE_ARRAY(vm, CFunc, vm->preparedInvokes, vm->preparedInvokeCapacity);
-    vm->preparedInvokes = NULL;
-    vm->preparedInvokeCnt = 0;
-    vm->preparedInvokeCapacity = 0;
+    FREE_ARRAY(vm, CFunc, vm->pendingInvokes, vm->pendingInvokeCapacity);
+    vm->pendingInvokes = NULL;
+    vm->pendingInvokeCnt = 0;
+    vm->pendingInvokeCapacity = 0;
     freeObjects(vm);
 
     shutdownGC(vm);
@@ -1077,15 +1077,15 @@ static InterpreterStatus run(VM* vm){
             return VM_RUNTIME_ERROR;
         }
 
-        if(vm->preparedInvokeCnt >= vm->preparedInvokeCapacity){
-            int oldCapacity = vm->preparedInvokeCapacity;
-            vm->preparedInvokeCapacity = GROW_CAPACITY(oldCapacity);
-            vm->preparedInvokes = GROW_ARRAY(
+        if(vm->pendingInvokeCnt >= vm->pendingInvokeCapacity){
+            int oldCapacity = vm->pendingInvokeCapacity;
+            vm->pendingInvokeCapacity = GROW_CAPACITY(oldCapacity);
+            vm->pendingInvokes = GROW_ARRAY(
                 vm,
                 CFunc,
-                vm->preparedInvokes,
+                vm->pendingInvokes,
                 oldCapacity,
-                vm->preparedInvokeCapacity
+                vm->pendingInvokeCapacity
             );
         }
 
@@ -1097,7 +1097,7 @@ static InterpreterStatus run(VM* vm){
             }
             R(a) = callee;
         }
-        vm->preparedInvokes[vm->preparedInvokeCnt++] = builtin;
+        vm->pendingInvokes[vm->pendingInvokeCnt++] = builtin;
     } DISPATCH();
 
     DO_OP_INVOKE:
@@ -1106,11 +1106,11 @@ static InterpreterStatus run(VM* vm){
         int argCount = GET_ARG_B(instruction);
         Value* oldStackTop = vm->stackTop;
 
-        if(vm->preparedInvokeCnt <= 0){
-            runtimeError(vm, "Method call has no prepared target.");
+        if(vm->pendingInvokeCnt <= 0){
+            runtimeError(vm, "Method call has no pending target.");
             return VM_RUNTIME_ERROR;
         }
-        CFunc builtin = vm->preparedInvokes[--vm->preparedInvokeCnt];
+        CFunc builtin = vm->pendingInvokes[--vm->pendingInvokeCnt];
 
         Value* callTop = &R(a + argCount + 1);
         for(Value* slot = callTop; slot < oldStackTop; slot++){
