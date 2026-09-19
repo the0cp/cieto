@@ -72,6 +72,9 @@ typedef struct VM{
     ObjectUpvalue* openUpvalues;    // descending locations
     CallFrame frames[FRAMES_MAX];
     int frameCount;
+    CFunc* preparedInvokes;
+    int preparedInvokeCnt;
+    int preparedInvokeCapacity;
 
     size_t bytesAllocated;
     size_t nextGC;

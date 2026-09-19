@@ -8,6 +8,18 @@ assert.eq(list.size(), 3, "List size after push");
 assert.eq(list.pop(), 3, "List pop returns last element");
 assert.eq(list.size(), 2, "List size after pop");
 
+var push = list.push;
+push(4);
+assert.eq(list.pop(), 4, "Captured list method keeps its receiver");
+
+var nested = [];
+nested.push("abc".len());
+assert.eq(nested[0], 3, "Nested direct method calls preserve prepared call state");
+
+func nestedLength() { return "frame".len(); }
+nested.push(nestedLength());
+assert.eq(nested[1], 5, "Prepared calls survive nested script frames");
+
 # List Bulk Fill
 var filled = [0; 5];
 assert.eq(filled.size(), 5, "List bulk initialization size");

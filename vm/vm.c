@@ -105,6 +105,7 @@ void resetStack(VM* vm){
 void recover(VM* vm){
     resetStack(vm);
     vm->frameCount = 0;
+    vm->preparedInvokeCnt = 0;
     vm->openUpvalues = NULL;
     vm->globalCnt = 0;
     vm->curGlobal = &vm->globals;
@@ -117,6 +118,9 @@ void initVM(VM* vm, int argc, const char* argv[]){
     vm->objects = NULL;
     vm->openUpvalues = NULL;
     vm->frameCount = 0;
+    vm->preparedInvokes = NULL;
+    vm->preparedInvokeCnt = 0;
+    vm->preparedInvokeCapacity = 0;
 
     srand((unsigned int)time(NULL));
     uint64_t p1 = (uint64_t)rand();
@@ -174,6 +178,10 @@ void freeVM(VM* vm){
     vm->globalCnt = 0;
     vm->curGlobal = NULL;
     vm->openUpvalues = NULL;
+    FREE_ARRAY(vm, CFunc, vm->preparedInvokes, vm->preparedInvokeCapacity);
+    vm->preparedInvokes = NULL;
+    vm->preparedInvokeCnt = 0;
+    vm->preparedInvokeCapacity = 0;
     freeObjects(vm);
 
     shutdownGC(vm);
@@ -315,103 +323,149 @@ static bool checkAccess(VM* vm, ObjectClass* instanceKlass, ObjectString* fieldN
     return false;
 }
 
-static Value bindListFunc(VM* vm, Value receiver, ObjectString* name){
-    CFunc func = NULL;
+static CFunc findListFunc(ObjectString* name){
     switch(name->length){
         case 3:
             if(memcmp(name->chars, "pop", 3) == 0){
-                func = list_pop;
+                return list_pop;
             }
             break;
         case 4:
             if(memcmp(name->chars, "push", 4) == 0){
-                func = list_push;
+                return list_push;
             }else if(memcmp(name->chars, "size", 4) == 0){
-                func = list_size;
+                return list_size;
             }
             break;
     }
 
-    if(func){
-        ObjectCFunc* cfuncObj = newCFunc(vm, func);
-        push(vm, OBJECT_VAL(cfuncObj));
-        ObjectBoundMethod* bound = newBoundMethod(vm, receiver, (Object*)cfuncObj);
-        pop(vm);    // pop cfuncObj
-        return OBJECT_VAL(bound);
-    }
-
-    return NULL_VAL;
+    return NULL;
 }
 
-static Value bindFileFunc(VM* vm, Value receiver, ObjectString* name){
-    CFunc func = NULL;
+static CFunc findFileFunc(ObjectString* name){
     switch(name->length){
         case 4:
             if(memcmp(name->chars, "read", 4) == 0){
-                func = file_read;
+                return file_read;
             }
             break;
         case 5:
             if(memcmp(name->chars, "close", 5) == 0){
-                func = file_close;
+                return file_close;
             }else if(memcmp(name->chars, "write", 5) == 0){
-                func = file_write;
+                return file_write;
             }
             break;
         case 8:
             if(memcmp(name->chars, "readLine", 8) == 0){
-                func = file_readLine;
+                return file_readLine;
             }
             break;
     }
 
-    if(func){
-        ObjectCFunc* cfuncObj = newCFunc(vm, func);
-        push(vm, OBJECT_VAL(cfuncObj));
-        ObjectBoundMethod* bound = newBoundMethod(vm, receiver, (Object*)cfuncObj);
-        pop(vm);    // pop cfuncObj
-        return OBJECT_VAL(bound);
-    }
-
-    return NULL_VAL;
+    return NULL;
 }
 
-static Value bindStringFunc(VM* vm, Value receiver, ObjectString* name){
-    CFunc func = NULL;
+static CFunc findStringFunc(ObjectString* name){
     if(name->length == 3){
         if(memcmp(name->chars, "len", 3) == 0){
-            func = string_len;
+            return string_len;
         }else if(memcmp(name->chars, "sub", 3) == 0){
-            func = string_sub;
+            return string_sub;
         }
     }else if(name->length == 4){
         if(memcmp(name->chars, "trim", 4) == 0){
-            func = string_trim;
+            return string_trim;
         }else if(memcmp(name->chars, "find", 4) == 0){
-            func = string_find;
+            return string_find;
         }
     }else if(name->length == 5){
         if(memcmp(name->chars, "upper", 5) == 0){
-            func = string_upper;
+            return string_upper;
         }else if(memcmp(name->chars, "lower", 5) == 0){
-            func = string_lower;
+            return string_lower;
         }else if(memcmp(name->chars, "split", 5) == 0){
-            func = string_split;
+            return string_split;
         }
     }else if(name->length == 7){
         if(memcmp(name->chars, "replace", 7) == 0){
-            func = string_replace;
+            return string_replace;
         }
     }
 
-    if(func){
-        ObjectCFunc* cfuncObj = newCFunc(vm, func);
-        push(vm, OBJECT_VAL(cfuncObj));
-        ObjectBoundMethod* bound = newBoundMethod(vm, receiver, (Object*)cfuncObj);
-        pop(vm);    // pop cfuncObj
-        return OBJECT_VAL(bound);
+    return NULL;
+}
+
+static CFunc findBuiltinMethod(Value receiver, ObjectString* name){
+    if(IS_STRING(receiver)){
+        return findStringFunc(name);
     }
-    return NULL_VAL;
+    if(IS_LIST(receiver)){
+        return findListFunc(name);
+    }
+    if(IS_FILE(receiver)){
+        return findFileFunc(name);
+    }
+    return NULL;
+}
+
+static Value bindBuiltinMethod(VM* vm, Value receiver, ObjectString* name){
+    CFunc func = findBuiltinMethod(receiver, name);
+    if(func == NULL){
+        return NULL_VAL;
+    }
+
+    ObjectCFunc* cfuncObj = newCFunc(vm, func);
+    push(vm, OBJECT_VAL(cfuncObj));
+    ObjectBoundMethod* bound = newBoundMethod(vm, receiver, (Object*)cfuncObj);
+    pop(vm);    // cfuncObj
+    return OBJECT_VAL(bound);
+}
+
+static bool getProperty(VM* vm, Value receiver, ObjectString* key, Value* result){
+    if(IS_INSTANCE(receiver)){
+        ObjectInstance* instance = AS_INSTANCE(receiver);
+        if(tableGet(vm, &instance->fields, OBJECT_VAL(key), result)){
+            if(!checkAccess(vm, instance->klass, key)){
+                runtimeError(vm, "Cannot access private field '%s'.", key->chars);
+                return false;
+            }
+            return true;
+        }
+
+        Value method;
+        if(tableGet(vm, &instance->klass->methods, OBJECT_VAL(key), &method)){
+            if(IS_CLOSURE(method) ||
+               (IS_OBJECT(method) && AS_OBJECT(method)->type == OBJECT_CFUNC)){
+                *result = OBJECT_VAL(newBoundMethod(vm, receiver, AS_OBJECT(method)));
+            }else{
+                *result = method;
+            }
+            return true;
+        }
+
+        runtimeError(vm, "Undefined field '%s'.", key->chars);
+        return false;
+    }
+
+    if(IS_MODULE(receiver)){
+        ObjectModule* module = AS_MODULE(receiver);
+        if(globalGetName(&module->members, key, result)){
+            return true;
+        }
+
+        runtimeError(vm, "Module has no member '%s'.", key->chars);
+        return false;
+    }
+
+    Value bound = bindBuiltinMethod(vm, receiver, key);
+    if(!IS_NULL(bound)){
+        *result = bound;
+        return true;
+    }
+
+    runtimeError(vm, "Property '%s' not found on object.", key->chars);
+    return false;
 }
 
 static InterpreterStatus run(VM* vm){
@@ -467,6 +521,8 @@ static InterpreterStatus run(VM* vm){
         [OP_TO_STRING]      = &&DO_OP_TO_STRING,
 
         [OP_CALL]           = &&DO_OP_CALL,
+        [OP_PREP_INVOKE]    = &&DO_OP_PREP_INVOKE,
+        [OP_INVOKE]         = &&DO_OP_INVOKE,
 
         [OP_IMPORT]         = &&DO_OP_IMPORT,
 
@@ -666,7 +722,7 @@ static InterpreterStatus run(VM* vm){
 
     DO_OP_GET_PROPERTY:
     {
-        Value instanceVal = R(GET_ARG_B(instruction));
+        Value receiver = R(GET_ARG_B(instruction));
         Value keyVal = R(GET_ARG_C(instruction));
         if(!IS_STRING(keyVal)){
             runtimeError(vm, "Property name must be a string.");
@@ -674,52 +730,9 @@ static InterpreterStatus run(VM* vm){
         }
 
         ObjectString* key = AS_STRING(keyVal);
-
-        Value result = NULL_VAL;
-
-        if(IS_INSTANCE(instanceVal)){
-            ObjectInstance* instance = AS_INSTANCE(instanceVal);
-            if(tableGet(vm, &instance->fields, OBJECT_VAL(key), &result)){
-                if(!checkAccess(vm, instance->klass, key)){
-                    runtimeError(vm, "Cannot access private field '%s'.", key->chars);
-                    return VM_RUNTIME_ERROR;
-                }
-                R(GET_ARG_A(instruction)) = result;
-            }else{
-                Value methodVal;
-                if(tableGet(vm, &instance->klass->methods, OBJECT_VAL(key), &methodVal)){
-                    if(IS_CLOSURE(methodVal) || (IS_OBJECT(methodVal) && AS_OBJECT(methodVal)->type == OBJECT_CFUNC)){
-                        ObjectBoundMethod* bound = newBoundMethod(vm, instanceVal, AS_OBJECT(methodVal));
-                        R(GET_ARG_A(instruction)) = OBJECT_VAL(bound);
-                    }else{
-                        R(GET_ARG_A(instruction)) = methodVal;
-                    }
-                }else{
-                    runtimeError(vm, "Undefined field '%s'.", key->chars);
-                    return VM_RUNTIME_ERROR;
-                }
-            }
-        }else if(IS_MODULE(instanceVal)){
-            ObjectModule* module = AS_MODULE(instanceVal);
-            if(!globalGetName(&module->members, key, &result)){
-                runtimeError(vm, "Module has no member '%s'.", key->chars);
-                return VM_RUNTIME_ERROR;
-            }
-            R(GET_ARG_A(instruction)) = result;
-        }else{
-            Value bound = NULL_VAL;
-            
-            if(IS_STRING(instanceVal)) bound = bindStringFunc(vm, instanceVal, key);
-            else if(IS_LIST(instanceVal)) bound = bindListFunc(vm, instanceVal, key);
-            else if(IS_FILE(instanceVal)) bound = bindFileFunc(vm, instanceVal, key);
-            
-            if(!IS_NULL(bound)){
-                R(GET_ARG_A(instruction)) = bound;
-            }else{
-                runtimeError(vm, "Property '%s' not found on object.", key->chars); 
-                return VM_RUNTIME_ERROR;
-            }
-        }
+        Value result;
+        if(!getProperty(vm, receiver, key, &result)) return VM_RUNTIME_ERROR;
+        R(GET_ARG_A(instruction)) = result;
         
     } DISPATCH();
 
@@ -1052,6 +1065,77 @@ static InterpreterStatus run(VM* vm){
         }
 
         frame = &vm->frames[vm->frameCount - 1];
+    } DISPATCH();
+
+    DO_OP_PREP_INVOKE:
+    {
+        int a = GET_ARG_A(instruction);
+        Value receiver = R(a);
+        Value name = K(GET_ARG_C(instruction));
+        if(!IS_STRING(name)){
+            runtimeError(vm, "Property name must be a string.");
+            return VM_RUNTIME_ERROR;
+        }
+
+        if(vm->preparedInvokeCnt >= vm->preparedInvokeCapacity){
+            int oldCapacity = vm->preparedInvokeCapacity;
+            vm->preparedInvokeCapacity = GROW_CAPACITY(oldCapacity);
+            vm->preparedInvokes = GROW_ARRAY(
+                vm,
+                CFunc,
+                vm->preparedInvokes,
+                oldCapacity,
+                vm->preparedInvokeCapacity
+            );
+        }
+
+        CFunc builtin = findBuiltinMethod(receiver, AS_STRING(name));
+        if(builtin == NULL){
+            Value callee;
+            if(!getProperty(vm, receiver, AS_STRING(name), &callee)){
+                return VM_RUNTIME_ERROR;
+            }
+            R(a) = callee;
+        }
+        vm->preparedInvokes[vm->preparedInvokeCnt++] = builtin;
+    } DISPATCH();
+
+    DO_OP_INVOKE:
+    {
+        int a = GET_ARG_A(instruction);
+        int argCount = GET_ARG_B(instruction);
+        Value* oldStackTop = vm->stackTop;
+
+        if(vm->preparedInvokeCnt <= 0){
+            runtimeError(vm, "Method call has no prepared target.");
+            return VM_RUNTIME_ERROR;
+        }
+        CFunc builtin = vm->preparedInvokes[--vm->preparedInvokeCnt];
+
+        Value* callTop = &R(a + argCount + 1);
+        for(Value* slot = callTop; slot < oldStackTop; slot++){
+            *slot = NULL_VAL;
+        }
+        vm->stackTop = callTop;
+
+        if(builtin != NULL){
+            Value result = builtin(vm, argCount, &R(a + 1));
+            if(vm->hadRuntimeError) return VM_RUNTIME_ERROR;
+
+            R(a) = result;
+            vm->stackTop = frame->base + frame->closure->func->maxRegSlots;
+        }else{
+            Value callee = R(a);
+            int frameCnt = vm->frameCount;
+            if(!callValue(vm, callee, argCount, oldStackTop)){
+                return VM_RUNTIME_ERROR;
+            }
+
+            if(vm->frameCount == frameCnt){
+                vm->stackTop = frame->base + frame->closure->func->maxRegSlots;
+            }
+            frame = &vm->frames[vm->frameCount - 1];
+        }
     } DISPATCH();
 
     DO_OP_IMPORT:

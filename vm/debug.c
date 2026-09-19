@@ -64,6 +64,8 @@ static const char* opNames[] = {
     "OP_JMP_IF_FALSE",  // R[A] is condition
     "OP_JMP_IF_TRUE",   // R[A] is condition
     "OP_CALL",
+    "OP_PREP_INVOKE",
+    "OP_INVOKE",
     "OP_TAILCALL",
     "OP_DEFER",
     "OP_SYSTEM",
@@ -304,6 +306,8 @@ void dasmInstruction(Chunk* chunk, int offset, GlobalEnv* globals){
         case OP_LE:
 
         case OP_CALL: 
+        case OP_PREP_INVOKE:
+        case OP_INVOKE:
         case OP_TAILCALL: 
         case OP_RETURN:
 

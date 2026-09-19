@@ -276,6 +276,21 @@ static int testCompilerLimits(void){
     }
 
     source = (SourceBuf){0};
+    if(!appendSource(&source, "var values = []; values.push(") ||
+       !appendNullArgs(&source, ARG_MAX) ||
+       !appendSource(&source, ");")){
+        fprintf(stderr, "Could not build method call limit test source.\n");
+        freeVM(&vm);
+        return 1;
+    }
+    script = compileWithDiag(&vm, source.data, "method_call_limit.cies", NULL, &sink);
+    if(script == NULL || !chunkHasOpB(&script->chunk, OP_INVOKE, ARG_MAX) ||
+       interpret(&vm, source.data, "method_call_limit.cies") != VM_OK){
+        fprintf(stderr, "Valid method call limit did not compile or execute correctly.\n");
+        failed = 1;
+    }
+
+    source = (SourceBuf){0};
     if(!appendSource(&source, "func tooMany(") ||
        !appendParams(&source, ARG_MAX + 1) ||
        !appendSource(&source, ") {}")){
@@ -415,9 +430,55 @@ static int testMoveElimination(void){
     return 0;
 }
 
+static int testMethodInvocation(void){
+    const char* source =
+        "var xs = []; xs.push(1); var push = xs.push; push(2);";
+    VM vm;
+    initVM(&vm, 0, NULL);
+
+    ObjectFunc* script = compile(&vm, source, "method_invocation.cies");
+    if(script == NULL || chunkCountOp(&script->chunk, OP_PREP_INVOKE) != 1 ||
+       chunkCountOp(&script->chunk, OP_INVOKE) != 1 ||
+       chunkCountOp(&script->chunk, OP_GET_PROPERTY) != 1){
+        fprintf(stderr, "Method calls and bound method values were not encoded correctly.\n");
+        freeVM(&vm);
+        return 1;
+    }
+
+    freeVM(&vm);
+
+    SourceBuf largeConstants = {0};
+    for(int i = 0; i <= MASK_C; i++){
+        if(!appendSource(&largeConstants, "\"constant-%d\";", i)){
+            fprintf(stderr, "Could not build large constant method-call test source.\n");
+            return 1;
+        }
+    }
+    if(!appendSource(&largeConstants, "var values = []; values.push(1);")){
+        fprintf(stderr, "Could not finish large constant method-call test source.\n");
+        return 1;
+    }
+
+    initVM(&vm, 0, NULL);
+    script = compile(&vm, largeConstants.data, "large_constant_method.cies");
+    if(script == NULL || chunkCountOp(&script->chunk, OP_PREP_INVOKE) != 0 ||
+       chunkCountOp(&script->chunk, OP_INVOKE) != 0 ||
+       chunkCountOp(&script->chunk, OP_GET_PROPERTY) != 1 ||
+       chunkCountOp(&script->chunk, OP_CALL) != 1 ||
+       interpret(&vm, largeConstants.data, "large_constant_method.cies") != VM_OK){
+        fprintf(stderr, "Large property constants did not use the safe call fallback.\n");
+        freeVM(&vm);
+        return 1;
+    }
+
+    freeVM(&vm);
+    return 0;
+}
+
 int main(void){
     if(testScanner() != 0 || testDiagnostic() != 0 ||
-       testCompilerLimits() != 0 || testMoveElimination() != 0){
+       testCompilerLimits() != 0 || testMoveElimination() != 0 ||
+       testMethodInvocation() != 0){
         return 1;
     }
 

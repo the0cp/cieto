@@ -48,6 +48,7 @@ static void expr2NextReg(Compiler* compiler, ExprDesc* expr);
 static void unplugExpr(Compiler* compiler, ExprDesc* expr);
 static void expr2RK(Compiler* compiler, ExprDesc* expr);
 static void freeExpr(Compiler* compiler, ExprDesc* expr);
+static int emitPropertyKey(Compiler* compiler, int constant);
 
 static void handleLiteral(Compiler* compiler, ExprDesc* expr, bool canAssign);
 static void handleGrouping(Compiler* compiler, ExprDesc* expr, bool canAssign);
@@ -493,7 +494,7 @@ static void unplugExpr(Compiler* compiler, ExprDesc* expr){
         case EXPR_PROP:
         {
             int objReg = expr->data.loc.index;
-            int keyReg = expr->data.loc.aux;
+            int keyReg = emitPropertyKey(compiler, expr->data.loc.aux);
             emitABC(
                 compiler, 
                 OP_GET_PROPERTY, 
@@ -578,6 +579,13 @@ static void expr2NextReg(Compiler* compiler, ExprDesc* expr){
     expr2Reg(compiler, expr, compiler->freeReg - 1);
 }
 
+static int emitPropertyKey(Compiler* compiler, int constant){
+    int keyReg = getFreeReg(compiler);
+    reserveReg(compiler, 1);
+    emitABx(compiler, OP_LOADK, keyReg, constant);
+    return keyReg;
+}
+
 static void storeVar(Compiler* compiler, ExprDesc* var, ExprDesc* val){
     switch(var->type){
         case EXPR_LOCAL:
@@ -624,22 +632,25 @@ static void storeVar(Compiler* compiler, ExprDesc* var, ExprDesc* val){
             freeExpr(compiler, &obj);
             break;
         case EXPR_PROP:
+        {
             expr2NextReg(compiler, val);
+            int keyReg = emitPropertyKey(compiler, var->data.loc.aux);
             emitABC(
                 compiler, 
                 OP_SET_PROPERTY, 
                 var->data.loc.index, 
-                var->data.loc.aux, 
+                keyReg,
                 val->data.loc.index
             );
-            freeExpr(compiler, val);
             ExprDesc propKey;
-            initExpr(&propKey, EXPR_REG, var->data.loc.aux);
+            initExpr(&propKey, EXPR_REG, keyReg);
             freeExpr(compiler, &propKey);
+            freeExpr(compiler, val);
             ExprDesc propObj;
             initExpr(&propObj, EXPR_REG, var->data.loc.index);
             freeExpr(compiler, &propObj);
             break;
+        }
         default:
             errorAt(compiler, &compiler->parser.pre, "Invalid assignment target.");
             break;
@@ -2319,18 +2330,8 @@ static void handleOr(Compiler* compiler, ExprDesc* expr, bool canAssign){
     patchJump(compiler, endJmp);
 }
 
-static int argList(Compiler* compiler, ExprDesc* func){
+static int parseCallArgs(Compiler* compiler, int firstArgReg){
     int argCnt = 0;
-    expr2NextReg(compiler, func);
-    int funcReg = func->data.loc.index;
-    if(funcReg < compiler->freeReg - 1){
-        reserveReg(compiler, 1);
-        int newReg = compiler->freeReg - 1;
-        emitABC(compiler, OP_MOVE, newReg, funcReg, 0);
-        funcReg = newReg;
-        func->data.loc.index = funcReg;
-    }
-
     if(!match(compiler, TOKEN_RIGHT_PAREN)){
         do{
             // Report error first, 
@@ -2345,8 +2346,7 @@ static int argList(Compiler* compiler, ExprDesc* func){
                 // ignore the rest of the arguments
                 freeExpr(compiler, &arg);
             }else{
-                int targetReg = funcReg + argCnt + 1;
-                // function is at funcReg, arguments start from funcReg + 1
+                int targetReg = firstArgReg + argCnt;
                 expr2Reg(compiler, &arg, targetReg);
                 setFreeReg(compiler, targetReg + 1);
             }
@@ -2358,7 +2358,38 @@ static int argList(Compiler* compiler, ExprDesc* func){
     return argCnt > ARG_MAX ? ARG_MAX : argCnt;
 }
 
+static int argList(Compiler* compiler, ExprDesc* func){
+    expr2NextReg(compiler, func);
+    int funcReg = func->data.loc.index;
+    if(funcReg < compiler->freeReg - 1){
+        reserveReg(compiler, 1);
+        int newReg = compiler->freeReg - 1;
+        emitABC(compiler, OP_MOVE, newReg, funcReg, 0);
+        funcReg = newReg;
+        func->data.loc.index = funcReg;
+    }
+
+    return parseCallArgs(compiler, funcReg + 1);
+}
+
 static void handleCall(Compiler* compiler, ExprDesc* expr, bool canAssign){
+    if(expr->type == EXPR_PROP && expr->data.loc.aux <= MASK_C){
+        int receiverReg = expr->data.loc.index;
+        int nameConst = expr->data.loc.aux;
+        emitABC(
+            compiler,
+            OP_PREP_INVOKE,
+            receiverReg,
+            0,
+            nameConst
+        );
+        int argCount = parseCallArgs(compiler, receiverReg + 1);
+        emitABC(compiler, OP_INVOKE, receiverReg, argCount, 0);
+        freeRegs(compiler, argCount);
+        initExpr(expr, EXPR_REG, receiverReg);
+        return;
+    }
+
     int argCount = argList(compiler, expr);
     emitABC(compiler, OP_CALL, expr->data.loc.index, argCount + 1, 2);
     // +1 for the function itself
@@ -2439,13 +2470,9 @@ static void handleDot(Compiler* compiler, ExprDesc* expr, bool canAssign){
     expr2NextReg(compiler, expr);
     int objReg = expr->data.loc.index;
 
-    int keyReg = getFreeReg(compiler);
-    reserveReg(compiler, 1);
-    emitABx(compiler, OP_LOADK, keyReg, nameConst);
-
     expr->type = EXPR_PROP;
     expr->data.loc.index = objReg;
-    expr->data.loc.aux = keyReg;
+    expr->data.loc.aux = nameConst;
 }
 
 static void handleList(Compiler* compiler, ExprDesc* expr, bool canAssign){

@@ -10,6 +10,12 @@ fs.write(fname, "Hello IO");
 var content = fs.read(fname);
 assert.eq(content, "Hello IO", "File write and read integrity");
 
+var handle = fs.open(fname, "a");
+handle.write(" via method");
+handle.close();
+content = fs.read(fname);
+assert.eq(content, "Hello IO via method", "File methods use the direct invocation path");
+
 # Path Module
 var absPath = path.abs(fname);
 assert.ok(path.isAbs(absPath), "Path absolute check");

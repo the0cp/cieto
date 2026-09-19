@@ -18,3 +18,23 @@ var u = User("Soyo", 18);
 
 assert.eq(u.Name, "Soyo", "Public field access");
 assert.eq(u.getAge(), 18, "Method accessing private field");
+
+class CallableField {
+    Call = null;
+}
+
+func oldCall(ignored) { return "old"; }
+func newCall(ignored) { return "new"; }
+func replaceCall(target) {
+    target.Call = newCall;
+    return null;
+}
+
+var callable = CallableField();
+callable.Call = oldCall;
+assert.eq(
+    callable.Call(replaceCall(callable)),
+    "old",
+    "Property call resolves the callee before evaluating arguments"
+);
+assert.eq(callable.Call(null), "new", "Argument side effects still update the property");
