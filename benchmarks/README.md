@@ -4,6 +4,8 @@ Each benchmark defines one deterministic workload and runs it through
 `harness.cies`. The harness verifies the workload result before reporting a
 measurement, so a faster but incorrect execution is always a failure.
 
+Commands and recorded measurements are maintained in [`RESULTS.md`](RESULTS.md).
+
 Run one benchmark with a release build:
 
 ```text
