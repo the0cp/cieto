@@ -26,6 +26,19 @@ bool tableSet(VM* vm, HashTable* table, Value key, Value value);
 bool tableRemove(VM* vm, HashTable* table, Value key);
 bool tableMerge(VM* vm, HashTable* from, HashTable* to);
 
+static inline bool tableNextEntry(HashTable* table, int* cursor, Entry** entry){
+    while(*cursor < table->capacity){
+        Entry* candidate = &table->entries[(*cursor)++];
+        if(!IS_EMPTY(candidate->key)){
+            *entry = candidate;
+            return true;
+        }
+    }
+
+    *entry = NULL;
+    return false;
+}
+
 ObjectString* tableGetInternedString(VM* vm, HashTable* table, const char* chars, int len, uint64_t hash);
 void tableRemoveWhite(VM* vm, HashTable* table);
 void markTable(VM* vm, HashTable* table);

@@ -63,3 +63,50 @@ for (var n : [1, 2, 3]) {
     iterSum += n; 
 }
 assert.eq(iterSum, 6, "Foreach iteration over list");
+
+var nullListCount = 0;
+for (var item : [null]) {
+    if (item == null) nullListCount++;
+}
+assert.eq(nullListCount, 1, "List foreach preserves a null item");
+
+var emptyMapCount = 0;
+for (var key : {}) emptyMapCount++;
+assert.eq(emptyMapCount, 0, "Empty Map foreach yields no entries");
+
+var singleKeyMap = {"only": 1};
+var singleKeyCount = 0;
+var sawOnlyKey = false;
+for (var key : singleKeyMap) {
+    singleKeyCount++;
+    if (key == "only") sawOnlyKey = true;
+}
+assert.eq(singleKeyCount, 1, "Map foreach visits only occupied entries");
+assert.ok(sawOnlyKey, "Map foreach yields the stored key");
+
+var nullKeyMap = {null: 7};
+var nullKeyCount = 0;
+var sawNullKey = false;
+for (var key : nullKeyMap) {
+    nullKeyCount++;
+    if (key == null) sawNullKey = true;
+}
+assert.eq(nullKeyCount, 1, "Map foreach visits a null key once");
+assert.ok(sawNullKey, "Map foreach preserves a null key");
+
+var nullIterator = iter([null]);
+assert.eq(nullIterator.advance(), true, "Iterator advances to a null item");
+assert.eq(nullIterator.current(), null, "Iterator current preserves a null item");
+assert.eq(nullIterator.advance(), false, "Iterator reports completion separately");
+
+var nullMapIterator = iter({null: 7});
+assert.eq(nullMapIterator.advance(), true, "Iterator advances to a null Map key");
+assert.eq(nullMapIterator.current(), null, "Iterator current preserves a null Map key");
+assert.eq(nullMapIterator.advance(), false, "Null-key Map iterator completes");
+
+var stringIterator = iter("ab");
+assert.eq(stringIterator.advance(), true, "Manual string iterator advances to first item");
+assert.eq(stringIterator.current(), "a", "Manual string iterator first item");
+assert.eq(stringIterator.advance(), true, "Manual string iterator advances to second item");
+assert.eq(stringIterator.current(), "b", "Manual string iterator second item");
+assert.eq(stringIterator.advance(), false, "Manual string iterator completion");

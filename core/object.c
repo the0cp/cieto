@@ -306,7 +306,9 @@ ObjectIterator* newIterator(VM* vm, Value receiver){
     iterator->obj.type = OBJECT_ITERATOR;
     iterator->obj.isMarked = false;
     iterator->receiver = receiver;
+    iterator->current = NULL_VAL;
     iterator->index = 0;
+    iterator->hasCurrent = false;
 
     iterator->obj.next = vm->objects;
     vm->objects = (Object*)iterator;

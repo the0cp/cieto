@@ -224,7 +224,9 @@ ObjectFile* newFile(VM* vm, FILE* file);
 typedef struct ObjectIterator{
     Object obj;
     Value receiver;
+    Value current;
     int index;
+    bool hasCurrent;
 }ObjectIterator;
 
 ObjectIterator* newIterator(VM* vm, Value receiver);

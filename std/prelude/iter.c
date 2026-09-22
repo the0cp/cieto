@@ -3,40 +3,76 @@
 #include "iter.h"
 #include "object.h"
 
-static Value iterMap(VM* vm, ObjectIterator* iter, ObjectMap* map){
-    while(iter->index < map->table.capacity){
-        Entry* entry = &map->table.entries[iter->index++];
-        if(!IS_EMPTY(entry->key)){
-            return entry->key;
-        }
-    }
-    return NULL_VAL;
+static bool isIterable(Value value){
+    return IS_LIST(value) || IS_MAP(value) || IS_STRING(value) || IS_FILE(value);
 }
 
-static Value iterFile(VM* vm, ObjectIterator* iter, ObjectFile* file){
-    if(!file->isOpen || file->handle == NULL){
-        return NULL_VAL;
+static bool advanceIterator(VM* vm, ObjectIterator* iterator, Value* result){
+    Value receiver = iterator->receiver;
+
+    if(IS_LIST(receiver)){
+        ObjectList* list = AS_LIST(receiver);
+        if(iterator->index >= list->count){
+            return false;
+        }
+
+        *result = list->items[iterator->index++];
+        return true;
     }
 
-    char buffer[1024];
-    if(fgets(buffer, sizeof(buffer), file->handle) != NULL){
-        size_t len = strlen(buffer);
-        if(len > 0 && buffer[len-1] == '\n'){
-            buffer[len-1] = '\0';
-            len--;
+    if(IS_MAP(receiver)){
+        Entry* entry;
+        if(!tableNextEntry(&AS_MAP(receiver)->table, &iterator->index, &entry)){
+            return false;
         }
-        return OBJECT_VAL(copyString(vm, buffer, (int)len));
+
+        *result = entry->key;
+        return true;
     }
-    return NULL_VAL;
+
+    if(IS_STRING(receiver)){
+        ObjectString* string = AS_STRING(receiver);
+        if(iterator->index >= string->length){
+            return false;
+        }
+
+        char chars[2] = {string->chars[iterator->index++], '\0'};
+        *result = OBJECT_VAL(copyStringRaw(vm, chars, 1));
+        return true;
+    }
+
+    if(IS_FILE(receiver)){
+        ObjectFile* file = AS_FILE(receiver);
+        if(!file->isOpen || file->handle == NULL){
+            return false;
+        }
+
+        char buffer[1024];
+        if(fgets(buffer, sizeof(buffer), file->handle) == NULL){
+            return false;
+        }
+
+        size_t len = strlen(buffer);
+        if(len > 0 && buffer[len - 1] == '\n'){
+            buffer[--len] = '\0';
+        }
+
+        iterator->index++;
+        *result = OBJECT_VAL(copyString(vm, buffer, (int)len));
+        return true;
+    }
+
+    return false;
 }
 
 Value iterNative(VM* vm, int argCount, Value* args){
     if(argCount != 1){
+        runtimeError(vm, "iter expects exactly one argument.");
         return NULL_VAL;
     }
     
     Value collection = args[0];
-    if(IS_MAP(collection) || IS_LIST(collection) || IS_FILE(collection)){
+    if(isIterable(collection)){
         return OBJECT_VAL(newIterator(vm, collection));
     }
     
@@ -44,24 +80,32 @@ Value iterNative(VM* vm, int argCount, Value* args){
     return NULL_VAL;
 }
 
-Value nextNative(VM* vm, int argCount, Value* args){
-    if(argCount != 1 || !IS_ITERATOR(args[0])){
+Value iteratorAdvance(VM* vm, int argCount, Value* args){
+    if(argCount != 0){
+        runtimeError(vm, "iterator.advance expects no arguments.");
         return NULL_VAL;
     }
 
-    ObjectIterator* iter = AS_ITERATOR(args[0]);
-    Value receiver = iter->receiver;
-
-    if(IS_LIST(receiver)){
-        ObjectList* list = AS_LIST(receiver);
-        if(iter->index < list->count){
-            return list->items[iter->index++];
-        }
-    }else if(IS_MAP(receiver)){
-        return iterMap(vm, iter, AS_MAP(receiver));
-    }else if (IS_FILE(receiver)){
-        return iterFile(vm, iter, AS_FILE(receiver));
+    ObjectIterator* iterator = AS_ITERATOR(args[-1]);
+    iterator->hasCurrent = advanceIterator(vm, iterator, &iterator->current);
+    if(!iterator->hasCurrent){
+        iterator->current = NULL_VAL;
     }
 
-    return NULL_VAL;
+    return BOOL_VAL(iterator->hasCurrent);
+}
+
+Value iteratorCurrent(VM* vm, int argCount, Value* args){
+    if(argCount != 0){
+        runtimeError(vm, "iterator.current expects no arguments.");
+        return NULL_VAL;
+    }
+
+    ObjectIterator* iterator = AS_ITERATOR(args[-1]);
+    if(!iterator->hasCurrent){
+        runtimeError(vm, "iterator.current is unavailable before advance or after completion.");
+        return NULL_VAL;
+    }
+
+    return iterator->current;
 }

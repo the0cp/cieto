@@ -13,6 +13,7 @@ typedef struct NativeModuleDef{
 void defineCFunc(VM* vm, GlobalEnv* env, const char* name, CFunc func);
 
 const NativeModuleDef* findNativeModule(const char* name);
+CFunc findBuiltinMethod(Value receiver, ObjectString* name);
 
 void registerPrelude(VM* vm);
 

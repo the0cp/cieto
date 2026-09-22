@@ -16,6 +16,17 @@ handle.close();
 content = fs.read(fname);
 assert.eq(content, "Hello IO via method", "File methods use the direct invocation path");
 
+handle = fs.open(fname, "r");
+var iteratedContent = "";
+var iteratedLineCount = 0;
+for (var line : handle) {
+    iteratedContent += line;
+    iteratedLineCount++;
+}
+handle.close();
+assert.eq(iteratedContent, content, "File foreach yields file content");
+assert.eq(iteratedLineCount, 1, "File foreach stops at EOF");
+
 # Path Module
 var absPath = path.abs(fname);
 assert.ok(path.isAbs(absPath), "Path absolute check");

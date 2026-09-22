@@ -14,11 +14,6 @@
 #include "module_loader.h"
 #include "gc_policy.h"
 
-#include "methods/list.h"
-#include "methods/string.h"
-
-#include "modules/fs.h"
-
 #ifdef DEBUG_TRACE
 #include "debug.h"
 #endif
@@ -321,92 +316,6 @@ static bool checkAccess(VM* vm, ObjectClass* instanceKlass, ObjectString* fieldN
     }
 
     return false;
-}
-
-static CFunc findListFunc(ObjectString* name){
-    switch(name->length){
-        case 3:
-            if(memcmp(name->chars, "pop", 3) == 0){
-                return list_pop;
-            }
-            break;
-        case 4:
-            if(memcmp(name->chars, "push", 4) == 0){
-                return list_push;
-            }else if(memcmp(name->chars, "size", 4) == 0){
-                return list_size;
-            }
-            break;
-    }
-
-    return NULL;
-}
-
-static CFunc findFileFunc(ObjectString* name){
-    switch(name->length){
-        case 4:
-            if(memcmp(name->chars, "read", 4) == 0){
-                return file_read;
-            }
-            break;
-        case 5:
-            if(memcmp(name->chars, "close", 5) == 0){
-                return file_close;
-            }else if(memcmp(name->chars, "write", 5) == 0){
-                return file_write;
-            }
-            break;
-        case 8:
-            if(memcmp(name->chars, "readLine", 8) == 0){
-                return file_readLine;
-            }
-            break;
-    }
-
-    return NULL;
-}
-
-static CFunc findStringFunc(ObjectString* name){
-    if(name->length == 3){
-        if(memcmp(name->chars, "len", 3) == 0){
-            return string_len;
-        }else if(memcmp(name->chars, "sub", 3) == 0){
-            return string_sub;
-        }
-    }else if(name->length == 4){
-        if(memcmp(name->chars, "trim", 4) == 0){
-            return string_trim;
-        }else if(memcmp(name->chars, "find", 4) == 0){
-            return string_find;
-        }
-    }else if(name->length == 5){
-        if(memcmp(name->chars, "upper", 5) == 0){
-            return string_upper;
-        }else if(memcmp(name->chars, "lower", 5) == 0){
-            return string_lower;
-        }else if(memcmp(name->chars, "split", 5) == 0){
-            return string_split;
-        }
-    }else if(name->length == 7){
-        if(memcmp(name->chars, "replace", 7) == 0){
-            return string_replace;
-        }
-    }
-
-    return NULL;
-}
-
-static CFunc findBuiltinMethod(Value receiver, ObjectString* name){
-    if(IS_STRING(receiver)){
-        return findStringFunc(name);
-    }
-    if(IS_LIST(receiver)){
-        return findListFunc(name);
-    }
-    if(IS_FILE(receiver)){
-        return findFileFunc(name);
-    }
-    return NULL;
 }
 
 static Value bindBuiltinMethod(VM* vm, Value receiver, ObjectString* name){
@@ -1494,44 +1403,48 @@ static InterpreterStatus run(VM* vm){
         Value iter = R(a);
         Value state = R(a + 1);
 
+        int index = IS_NUM(state) ? (int)AS_NUM(state) : 0;
         bool hasNext = false;
 
         if(IS_LIST(iter)){
             ObjectList* list = AS_LIST(iter);
-            int index = IS_NUM(state) ? (int)AS_NUM(state) : 0;
             if(index < list->count){
-                R(a + 2) = list->items[index];
-                R(a + 1) = NUM_VAL(index + 1);
+                R(a + 2) = list->items[index++];
                 hasNext = true;
             }
         }else if(IS_MAP(iter)){
-            ObjectMap* map = AS_MAP(iter);
-            int index = IS_NUM(state) ? (int)AS_NUM(state) : 0;
-            while(index < map->table.capacity){
-                if(!IS_NULL(map->table.entries[index].key)){
-                    R(a + 2) = map->table.entries[index].key;
-                    R(a + 1) = NUM_VAL(index + 1);
-                    hasNext = true;
-                    break;
-                }
-                index++;
-            }
-            if(!hasNext){
-                R(a + 1) = NUM_VAL(index);
+            Entry* entry;
+            if(tableNextEntry(&AS_MAP(iter)->table, &index, &entry)){
+                R(a + 2) = entry->key;
+                hasNext = true;
             }
         }else if(IS_STRING(iter)){
-            ObjectString* str = AS_STRING(iter);
-            int index = IS_NUM(state) ? (int)AS_NUM(state) : 0;
-            if(index < str->length){
-                char chars[2] = {str->chars[index], '\0'};
+            ObjectString* string = AS_STRING(iter);
+            if(index < string->length){
+                char chars[2] = {string->chars[index++], '\0'};
                 R(a + 2) = OBJECT_VAL(copyStringRaw(vm, chars, 1));
-                R(a + 1) = NUM_VAL(index + 1);
                 hasNext = true;
+            }
+        }else if(IS_FILE(iter)){
+            ObjectFile* file = AS_FILE(iter);
+            if(file->isOpen && file->handle != NULL){
+                char buffer[1024];
+                if(fgets(buffer, sizeof(buffer), file->handle) != NULL){
+                    size_t len = strlen(buffer);
+                    if(len > 0 && buffer[len - 1] == '\n'){
+                        buffer[--len] = '\0';
+                    }
+
+                    R(a + 2) = OBJECT_VAL(copyString(vm, buffer, (int)len));
+                    index++;
+                    hasNext = true;
+                }
             }
         }else{
             runtimeError(vm, "Object is not iterable.");
             return VM_RUNTIME_ERROR;
         }
+        R(a + 1) = NUM_VAL(index);
 
         if(!hasNext){
             frame->ip += sBx;

@@ -4,6 +4,7 @@
 #include "vm.h"
 
 Value iterNative(VM* vm, int argCount, Value* args);
-Value nextNative(VM* vm, int argCount, Value* args);
+Value iteratorAdvance(VM* vm, int argCount, Value* args);
+Value iteratorCurrent(VM* vm, int argCount, Value* args);
 
 #endif

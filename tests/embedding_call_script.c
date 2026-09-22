@@ -188,6 +188,28 @@ int main(void) {
 
     printf("VM recovered after failed call: %.14g\n", result.as.number);
 
+    const struct {
+        const char* source;
+        const char* expectedError;
+    } iteratorErrors[] = {
+        {"iter();\n", "iter expects exactly one argument"},
+        {"var advanceIt = iter([1]); advanceIt.advance(1);\n", "iterator.advance expects no arguments"},
+        {"var currentIt = iter([1]); currentIt.current();\n", "iterator.current is unavailable"},
+    };
+
+    for(size_t i = 0; i < sizeof(iteratorErrors) / sizeof(iteratorErrors[0]); i++){
+        status = cie_vm_eval(vm, iteratorErrors[i].source, "iterator_error.cies");
+        error = cie_vm_last_error(vm);
+
+        if(status != CIE_STATUS_RUNTIME_ERROR || error == NULL ||
+           strstr(error, iteratorErrors[i].expectedError) == NULL){
+            fprintf(stderr, "Unexpected iterator API result: %s\n",
+                    error != NULL ? error : cie_status_string(status));
+            cie_vm_destroy(vm);
+            return 1;
+        }
+    }
+
     cie_vm_destroy(vm);
     return 0;
 }

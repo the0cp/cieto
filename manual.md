@@ -365,7 +365,7 @@ All three clauses are optional (e.g., `for (;;) { ... }` creates an infinite loo
 
 #### foreach
 
-Cieto supports a simplified syntax for iterating over any iterable object (List, Map, File, etc.) using the `:` operator. This is syntactic sugar for the underlying `iter()` and `next()` protocol.
+Cieto supports a simplified syntax for iterating over List, Map, String, and File values using the `:` operator. `foreach` and the manual iterator API share the same internal stepping semantics.
 
 - **Syntax**: `for (var item : iterable) { ... }`
 
@@ -442,7 +442,6 @@ Example:
 ```javascript
 func processFile() {
     var f = fs.open("log.txt", "w");
-    if (!f) return;
     
     # Ensure file is closed when function exits, 
     # even if an error occurs later.
@@ -504,23 +503,38 @@ print "Done.";
 
 ## Iterators
 
-Cieto provides a built-in iterator protocol to traverse collections efficiently. This mechanism underpins the `foreach` loop but can also be used manually.
+Cieto provides a built-in iterator protocol to traverse collections efficiently. It uses the same stepping semantics as `foreach` but can also be used manually.
 
-Cieto exposes two global functions to work with iterators:
+Cieto exposes the global `iter()` function and two Iterator methods:
 
 - `iter(iterable)`
   
   - *Description*: Creates and returns an **Iterator** object for the given receiver.
   
-  - *Supported Types*: List, Map, File.
+  - *Supported Types*: List, Map, String, File.
   
   - *Returns*: Iterator Object.
 
-- `next(iterator)`
-  
-  - *Description*: Advances the iterator and returns the next value.
-  
-  - *Returns*: The next value, or `null` if the iteration has finished.
+- `iterator.advance()`
+
+  - *Description*: Advances the iterator by one item.
+
+  - *Returns*: `true` when an item is available, or `false` when iteration has finished.
+
+- `iterator.current()`
+
+  - *Description*: Returns the item selected by the most recent successful `advance()` call. The item may be `null`.
+
+  - *Errors*: Produces a runtime error before the first successful `advance()` or after iteration has finished.
+
+Example:
+
+```javascript
+var iterator = iter([1, null, 3]);
+while (iterator.advance()) {
+    print iterator.current();
+}
+```
 
 ## Functions
 
@@ -740,7 +754,9 @@ import "fs";
   
   - *Arguments*: `path` (String), `content` (String).
   
-  - *Returns*: `true` on success, `null` on failure.
+  - *Returns*: `true` on success.
+
+  - *Errors*: Produces a runtime error if the file cannot be opened or fully written. Failure is not returned as an observable `null` value.
 
 - `fs.append(path, content)`
   
@@ -788,7 +804,7 @@ import "fs";
 
 - `fs.open(path, [mode])`
   
-  - *Description*: Opens a file and returns a iterable **File Object** for advanced operations.
+  - *Description*: Opens a file and returns an iterable **File Object** for advanced operations.
   
   - *Arguments*:
 
@@ -797,6 +813,8 @@ import "fs";
     - `mode` (String, optional): "r" (read), "w" (write), etc. Defaults to "r".
   
   - *Returns*: A File Object.
+
+  - *Errors*: Produces a runtime error if the file cannot be opened. Code after the call does not continue with a `null` file value.
 
 ### os - Operating System Module
 

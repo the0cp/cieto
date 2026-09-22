@@ -145,6 +145,7 @@ static void traceRef(VM* vm, Object* object){
         case OBJECT_ITERATOR:{
             ObjectIterator* iterator = (ObjectIterator*)object;
             markValue(vm, iterator->receiver);
+            markValue(vm, iterator->current);
             break;
         }
         case OBJECT_STRING:
