@@ -32,7 +32,7 @@ static bool advanceIterator(VM* vm, ObjectIterator* iterator, Value* result){
 
     if(IS_STRING(receiver)){
         ObjectString* string = AS_STRING(receiver);
-        if(iterator->index >= string->length){
+        if((size_t)iterator->index >= string->length){
             return false;
         }
 
@@ -44,11 +44,15 @@ static bool advanceIterator(VM* vm, ObjectIterator* iterator, Value* result){
     if(IS_FILE(receiver)){
         ObjectFile* file = AS_FILE(receiver);
         if(!file->isOpen || file->handle == NULL){
+            runtimeError(vm, "Cannot iterate a closed file.");
             return false;
         }
 
         char buffer[1024];
         if(fgets(buffer, sizeof(buffer), file->handle) == NULL){
+            if(ferror(file->handle)){
+                runtimeError(vm, "Could not read from file while iterating.");
+            }
             return false;
         }
 

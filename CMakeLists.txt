@@ -177,6 +177,15 @@ target_link_libraries(cieto_runtime_numeric_tests
         libcieto
 )
 
+add_executable(cieto_runtime_fs_tests
+    tests/runtime_fs.c
+)
+
+target_link_libraries(cieto_runtime_fs_tests
+    PRIVATE
+        libcieto
+)
+
 include(CTest)
 
 if(BUILD_TESTING)
@@ -300,6 +309,11 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME cieto_runtime_fs
+        COMMAND $<TARGET_FILE:cieto_runtime_fs_tests>
+    )
+
+    add_test(
         NAME cieto_runtime_numeric
         COMMAND $<TARGET_FILE:cieto_runtime_numeric_tests>
     )
@@ -315,6 +329,7 @@ add_custom_target(check
         cieto_embed_call_script
         cieto_embed_output_callback
         cieto_frontend_tests
+        cieto_runtime_fs_tests
         cieto_runtime_numeric_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )

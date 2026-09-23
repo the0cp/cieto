@@ -1420,25 +1420,31 @@ static InterpreterStatus run(VM* vm){
             }
         }else if(IS_STRING(iter)){
             ObjectString* string = AS_STRING(iter);
-            if(index < string->length){
+            if((size_t)index < string->length){
                 char chars[2] = {string->chars[index++], '\0'};
                 R(a + 2) = OBJECT_VAL(copyStringRaw(vm, chars, 1));
                 hasNext = true;
             }
         }else if(IS_FILE(iter)){
             ObjectFile* file = AS_FILE(iter);
-            if(file->isOpen && file->handle != NULL){
-                char buffer[1024];
-                if(fgets(buffer, sizeof(buffer), file->handle) != NULL){
-                    size_t len = strlen(buffer);
-                    if(len > 0 && buffer[len - 1] == '\n'){
-                        buffer[--len] = '\0';
-                    }
+            if(!file->isOpen || file->handle == NULL){
+                runtimeError(vm, "Cannot iterate a closed file.");
+                return VM_RUNTIME_ERROR;
+            }
 
-                    R(a + 2) = OBJECT_VAL(copyString(vm, buffer, (int)len));
-                    index++;
-                    hasNext = true;
+            char buffer[1024];
+            if(fgets(buffer, sizeof(buffer), file->handle) != NULL){
+                size_t len = strlen(buffer);
+                if(len > 0 && buffer[len - 1] == '\n'){
+                    buffer[--len] = '\0';
                 }
+
+                R(a + 2) = OBJECT_VAL(copyString(vm, buffer, (int)len));
+                index++;
+                hasNext = true;
+            }else if(ferror(file->handle)){
+                runtimeError(vm, "Could not read from file while iterating.");
+                return VM_RUNTIME_ERROR;
             }
         }else{
             runtimeError(vm, "Object is not iterable.");

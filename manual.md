@@ -369,6 +369,8 @@ Cieto supports a simplified syntax for iterating over List, Map, String, and Fil
 
 - **Syntax**: `for (var item : iterable) { ... }`
 
+- **File Errors**: A closed File or a read failure produces a runtime error; only normal EOF ends the loop.
+
 Example:
 
 ```javascript
@@ -520,6 +522,8 @@ Cieto exposes the global `iter()` function and two Iterator methods:
   - *Description*: Advances the iterator by one item.
 
   - *Returns*: `true` when an item is available, or `false` when iteration has finished.
+
+  - *Errors*: Iterating a closed File or encountering a File read failure produces a runtime error. `false` only represents normal exhaustion.
 
 - `iterator.current()`
 
@@ -748,6 +752,8 @@ import "fs";
   
   - *Returns*: String (content).
 
+  - *Errors*: Produces a runtime error if the file cannot be opened, read, or closed successfully.
+
 - `fs.write(path, content)`
   
   - *Description*: Writes `content` to the file at `path`. **Overwrites** the file if it exists.
@@ -765,6 +771,8 @@ import "fs";
   - *Arguments*: `path` (String), `content` (String).
   
   - *Returns*: `true` on success.
+
+  - *Errors*: Produces a runtime error if the file cannot be opened, fully written, or closed successfully.
 
 - `fs.exists(path)`
   
@@ -789,6 +797,8 @@ import "fs";
   - *Description*: Reads the file line by line.
   
   - *Returns*: A List of Strings, where each item is a line from the file.
+
+  - *Errors*: Produces a runtime error if the file cannot be opened, read, or closed successfully.
 
 - `fs.mkdir(path)`
   
@@ -1124,13 +1134,13 @@ Available on any List object (e.g., `[1, 2]`).
 
 Available on file objects returned by `fs.open()`.
 
-- `.read()`: Reads the rest of the file content.
+- `.read()`: Reads the rest of the file content. Read failures produce a runtime error.
 
-- `.readLine()`: Reads a single line from the file.
+- `.readLine()`: Reads a single line from the file, or returns `null` at normal EOF. Read failures produce a runtime error.
 
-- `.write(string)`: Writes a string to the file.
+- `.write(string)`: Writes and flushes a string to the file. Write or flush failures produce a runtime error.
 
-- `.close()`: Closes the file handle.
+- `.close()`: Closes the file handle. A close failure produces a runtime error; the File Object is closed either way.
 
 ### String Method
 

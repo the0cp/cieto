@@ -7,14 +7,19 @@ var fname = "test_file.tmp";
 
 # File Write and Read
 fs.write(fname, "Hello IO");
+fs.append(fname, " appended");
 var content = fs.read(fname);
-assert.eq(content, "Hello IO", "File write and read integrity");
+assert.eq(content, "Hello IO appended", "File write, append, and read integrity");
 
 var handle = fs.open(fname, "a");
 handle.write(" via method");
 handle.close();
 content = fs.read(fname);
-assert.eq(content, "Hello IO via method", "File methods use the direct invocation path");
+assert.eq(content, "Hello IO appended via method", "File methods use the direct invocation path");
+
+handle = fs.open(fname, "r");
+assert.eq(handle.read(), content, "File read method returns remaining content");
+handle.close();
 
 handle = fs.open(fname, "r");
 var iteratedContent = "";
@@ -26,6 +31,25 @@ for (var line : handle) {
 handle.close();
 assert.eq(iteratedContent, content, "File foreach yields file content");
 assert.eq(iteratedLineCount, 1, "File foreach stops at EOF");
+
+fs.write(fname, "first\n\nthird");
+handle = fs.open(fname, "r");
+assert.eq(handle.readLine(), "first", "File readLine reads a line");
+assert.eq(handle.readLine(), "", "File readLine keeps an empty line distinct from EOF");
+assert.eq(handle.readLine(), "third", "File readLine reads a final unterminated line");
+assert.eq(handle.readLine(), null, "File readLine returns null only at EOF");
+handle.close();
+
+handle = fs.open(fname, "r");
+var fileIterator = iter(handle);
+assert.ok(fileIterator.advance(), "File iterator advances to first line");
+assert.eq(fileIterator.current(), "first", "File iterator current returns first line");
+assert.ok(fileIterator.advance(), "File iterator advances to empty line");
+assert.eq(fileIterator.current(), "", "File iterator keeps an empty line distinct from EOF");
+assert.ok(fileIterator.advance(), "File iterator advances to final line");
+assert.eq(fileIterator.current(), "third", "File iterator current returns final line");
+assert.ok(!fileIterator.advance(), "File iterator returns false only at EOF");
+handle.close();
 
 # Path Module
 var absPath = path.abs(fname);

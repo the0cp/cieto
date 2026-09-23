@@ -1,6 +1,8 @@
 #ifndef _WIN32
 #define _DEFAULT_SOURCE
 #endif
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +36,102 @@
 static bool is_excluded(VM* vm, const char* filename, Value excludeVal, bool ignoreCase);
 static void scan_dir(VM* vm, const char* baseDir, const char* relDir, ObjectList* list, GlobConfig* config);
 
+static void reportFileError(VM* vm, const char* action, const char* path, int errorCode){
+    if(path != NULL){
+        if(errorCode != 0){
+            runtimeError(vm, "%s '%s': %s.", action, path, strerror(errorCode));
+        }else{
+            runtimeError(vm, "%s '%s'.", action, path);
+        }
+    }else if(errorCode != 0){
+        runtimeError(vm, "%s: %s.", action, strerror(errorCode));
+    }else{
+        runtimeError(vm, "%s.", action);
+    }
+}
+
+static bool readRemainingFile(VM* vm, FILE* file, char** content, size_t* length){
+    size_t capacity = 1;
+    size_t used = 0;
+    char* buffer = (char*)malloc(capacity);
+    if(buffer == NULL){
+        runtimeError(vm, "Could not allocate memory for file content.");
+        return false;
+    }
+
+    char chunk[4096];
+    while(true){
+        errno = 0;
+        size_t readBytes = fread(chunk, 1, sizeof(chunk), file);
+        if(readBytes == 0){
+            break;
+        }
+
+        if(readBytes > (size_t)INT_MAX - used){
+            free(buffer);
+            runtimeError(vm, "File content is too large to read.");
+            return false;
+        }
+
+        size_t required = used + readBytes + 1;
+        if(required > capacity){
+            size_t newCapacity = capacity;
+            while(newCapacity < required){
+                if(newCapacity > ((size_t)INT_MAX + 1) / 2){
+                    newCapacity = required;
+                    break;
+                }
+                newCapacity *= 2;
+            }
+
+            char* resized = (char*)realloc(buffer, newCapacity);
+            if(resized == NULL){
+                free(buffer);
+                runtimeError(vm, "Could not allocate memory for file content.");
+                return false;
+            }
+            buffer = resized;
+            capacity = newCapacity;
+        }
+
+        memcpy(buffer + used, chunk, readBytes);
+        used += readBytes;
+    }
+
+    if(ferror(file)){
+        int errorCode = errno;
+        free(buffer);
+        reportFileError(vm, "Could not read file", NULL, errorCode);
+        return false;
+    }
+
+    buffer[used] = '\0';
+    *content = buffer;
+    *length = used;
+    return true;
+}
+
+static bool writeAndCloseFile(VM* vm, FILE* file, ObjectString* content, const char* path){
+    errno = 0;
+    size_t written = fwrite(content->chars, 1, (size_t)content->length, file);
+    int writeError = errno;
+    bool writeFailed = written != (size_t)content->length || ferror(file);
+
+    errno = 0;
+    int closeResult = fclose(file);
+    int closeError = errno;
+
+    if(writeFailed){
+        reportFileError(vm, "Could not write all content to file", path, writeError);
+        return false;
+    }
+    if(closeResult != 0){
+        reportFileError(vm, "Could not close file after writing", path, closeError);
+        return false;
+    }
+    return true;
+}
+
 #define GET_FILE(val) \
     if(!IS_FILE(val)){ \
         runtimeError(vm, "Expected a file object.\n"); \
@@ -47,28 +145,37 @@ static void scan_dir(VM* vm, const char* baseDir, const char* relDir, ObjectList
 
 Value file_read(VM* vm, int argCount, Value* args){
     GET_FILE(args[-1]);
-    long curPos = ftell(fileObj->handle);
-    fseek(fileObj->handle, 0L, SEEK_END);
-    long endPos = ftell(fileObj->handle);
-    fseek(fileObj->handle, curPos, SEEK_SET);
-
-    size_t size = endPos - curPos;
-    char* content = (char*)malloc(size + 1);
-    if(!content){
-        runtimeError(vm, "Could not allocate memory for file content\n");
+    if(argCount != 0){
+        runtimeError(vm, "file.read expects no arguments.");
         return NULL_VAL;
     }
 
-    size_t readBytes = fread(content, 1, size, fileObj->handle);
-    content[readBytes] = '\0';
-    return OBJECT_VAL(copyString(vm, content, (int)readBytes));
+    char* content;
+    size_t length;
+    if(!readRemainingFile(vm, fileObj->handle, &content, &length)){
+        return NULL_VAL;
+    }
+
+    Value result = OBJECT_VAL(copyString(vm, content, (int)length));
+    free(content);
+    return result;
 }
 
 Value file_close(VM* vm, int argCount, Value* args){
     GET_FILE(args[-1]);
-    fclose(fileObj->handle);
+    if(argCount != 0){
+        runtimeError(vm, "file.close expects no arguments.");
+        return NULL_VAL;
+    }
+
+    FILE* handle = fileObj->handle;
     fileObj->isOpen = false;
     fileObj->handle = NULL;
+
+    errno = 0;
+    if(fclose(handle) != 0){
+        reportFileError(vm, "Could not close file", NULL, errno);
+    }
     return NULL_VAL;
 }
 
@@ -78,17 +185,34 @@ Value file_write(VM* vm, int argCount, Value* args){
         runtimeError(vm, "file.write expects a single string argument.\n");
         return NULL_VAL;
     }
-    char* content = AS_CSTRING(args[0]);
-    fprintf(fileObj->handle, "%s", content);
+
+    ObjectString* content = AS_STRING(args[0]);
+    errno = 0;
+    size_t written = fwrite(content->chars, 1, (size_t)content->length, fileObj->handle);
+    if(written != (size_t)content->length || ferror(fileObj->handle)){
+        reportFileError(vm, "Could not write all content to file", NULL, errno);
+        return NULL_VAL;
+    }
+
+    errno = 0;
+    if(fflush(fileObj->handle) != 0){
+        reportFileError(vm, "Could not flush file content", NULL, errno);
+    }
     return NULL_VAL;
 }
 
 Value file_readLine(VM* vm, int argCount, Value* args){
     GET_FILE(args[-1]);
+    if(argCount != 0){
+        runtimeError(vm, "file.readLine expects no arguments.");
+        return NULL_VAL;
+    }
+
     size_t capacity = 128;
     size_t length = 0;
     char* buffer = (char*)reallocate(vm, NULL, 0, capacity);
     int c;
+    errno = 0;
     while(true){
         c = fgetc(fileObj->handle);
         if(c == EOF || c == '\n'){
@@ -104,6 +228,13 @@ Value file_readLine(VM* vm, int argCount, Value* args){
         buffer[length++] = (char)c;
     }
 
+    if(c == EOF && ferror(fileObj->handle)){
+        int errorCode = errno;
+        reallocate(vm, buffer, capacity, 0);
+        reportFileError(vm, "Could not read line from file", NULL, errorCode);
+        return NULL_VAL;
+    }
+
     if(length == 0 && c == EOF){
         reallocate(vm, buffer, capacity, 0);
         return NULL_VAL;
@@ -115,20 +246,28 @@ Value file_readLine(VM* vm, int argCount, Value* args){
 }
 
 static Value fs_open(VM* vm, int argCount, Value* args){
-    if(argCount < 1 || !IS_STRING(args[0])){
-        runtimeError(vm, "fs.open expects a file path string as the first argument.");
+    if(argCount < 1 || argCount > 2 || !IS_STRING(args[0]) ||
+       (argCount == 2 && !IS_STRING(args[1]))){
+        runtimeError(vm, "fs.open expects a path string and an optional mode string.");
         return NULL_VAL;
     }
 
     char* path = AS_CSTRING(args[0]);
     char* mode = "r";
-    if(argCount > 1 && IS_STRING(args[1])){
+    if(argCount == 2){
         mode = AS_CSTRING(args[1]);
     }
 
+    errno = 0;
     FILE* file = fopen(path, mode);
     if(!file){
-        runtimeError(vm, "Could not open file '%s' with mode '%s'", path, mode);
+        int errorCode = errno;
+        if(errorCode != 0){
+            runtimeError(vm, "Could not open file '%s' with mode '%s': %s.",
+                         path, mode, strerror(errorCode));
+        }else{
+            runtimeError(vm, "Could not open file '%s' with mode '%s'.", path, mode);
+        }
         return NULL_VAL;
     }
     return OBJECT_VAL(newFile(vm, file));
@@ -142,24 +281,29 @@ static Value fs_readFile(VM* vm, int argCount, Value* args){
     }
 
     char* path = AS_CSTRING(args[0]);
+    errno = 0;
     FILE* file = fopen(path, "rb");
     if(!file){
-        runtimeError(vm, "Could not open file %s\n", path);
+        reportFileError(vm, "Could not open file", path, errno);
         return NULL_VAL;
     }
-    fseek(file, 0L, SEEK_END);
-    size_t size = ftell(file);
-    rewind(file);
 
-    char* content = malloc(size + 1);
-    if(!content){
-        runtimeError(vm, "Could not allocate memory for file content\n");
+    char* content;
+    size_t length;
+    if(!readRemainingFile(vm, file, &content, &length)){
         fclose(file);
         return NULL_VAL;
     }
-    content[fread(content, 1, size, file)] = '\0';
-    fclose(file);
-    Value result = OBJECT_VAL(copyString(vm, content, size));
+
+    errno = 0;
+    if(fclose(file) != 0){
+        int errorCode = errno;
+        free(content);
+        reportFileError(vm, "Could not close file after reading", path, errorCode);
+        return NULL_VAL;
+    }
+
+    Value result = OBJECT_VAL(copyString(vm, content, (int)length));
     free(content);
     return result;
 }
@@ -172,9 +316,10 @@ static Value fs_readLines(VM* vm, int argCount, Value* args){
     }
 
     char* path = AS_CSTRING(args[0]);
+    errno = 0;
     FILE* file = fopen(path, "r");
     if(!file){
-        runtimeError(vm, "Could not open file %s\n", path);
+        reportFileError(vm, "Could not open file", path, errno);
         return NULL_VAL;
     }
 
@@ -182,6 +327,7 @@ static Value fs_readLines(VM* vm, int argCount, Value* args){
     push(vm, OBJECT_VAL(list));
 
     char line[1024];
+    errno = 0;
     while(fgets(line, sizeof(line), file)){
         size_t len = strlen(line);
         if(len > 0 && line[len - 1] == '\n'){
@@ -195,7 +341,22 @@ static Value fs_readLines(VM* vm, int argCount, Value* args){
         pop(vm);
     }
 
-    fclose(file);
+    if(ferror(file)){
+        int errorCode = errno;
+        fclose(file);
+        pop(vm);
+        reportFileError(vm, "Could not read file", path, errorCode);
+        return NULL_VAL;
+    }
+
+    errno = 0;
+    if(fclose(file) != 0){
+        int errorCode = errno;
+        pop(vm);
+        reportFileError(vm, "Could not close file after reading", path, errorCode);
+        return NULL_VAL;
+    }
+
     pop(vm);
     return OBJECT_VAL(list);
 }
@@ -207,18 +368,16 @@ static Value fs_writeFile(VM* vm, int argCount, Value* args){
     }
 
     char* path = AS_CSTRING(args[0]);
-    char* content = AS_CSTRING(args[1]);
+    ObjectString* content = AS_STRING(args[1]);
 
+    errno = 0;
     FILE* file = fopen(path, "wb");
     if(!file){
-        runtimeError(vm, "Could not open file %s for writing\n", path);
+        reportFileError(vm, "Could not open file for writing", path, errno);
         return NULL_VAL;
     }
-    size_t written = fwrite(content, sizeof(char), strlen(content), file);
-    fclose(file);
 
-    if(written < strlen(content)){
-        runtimeError(vm, "Could not write all content to file %s\n", path);
+    if(!writeAndCloseFile(vm, file, content, path)){
         return NULL_VAL;
     }
 
@@ -232,16 +391,18 @@ static Value fs_appendFile(VM* vm, int argCount, Value* args){
     }
 
     char* path = AS_CSTRING(args[0]);
-    char* content = AS_CSTRING(args[1]);
+    ObjectString* content = AS_STRING(args[1]);
 
+    errno = 0;
     FILE* file = fopen(path, "ab");
     if(!file){
-        runtimeError(vm, "Could not open file %s\n", path);
+        reportFileError(vm, "Could not open file for appending", path, errno);
         return NULL_VAL;
     }
 
-    fwrite(content, sizeof(char), strlen(content), file);
-    fclose(file);
+    if(!writeAndCloseFile(vm, file, content, path)){
+        return NULL_VAL;
+    }
     return BOOL_VAL(true);
 }
 
