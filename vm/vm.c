@@ -755,22 +755,12 @@ static InterpreterStatus run(VM* vm){
             ObjectString* cStr = IS_STRING(c) ? AS_STRING(c) : toString(vm, c);
             vm->stackTop[-1] = OBJECT_VAL(cStr);
 
-            size_t len = bStr->length + cStr->length;
-            char* chars = (char*)reallocate(vm, NULL, 0, len + 1);  // add 1 for '\0'
-            if(chars == NULL){
-                runtimeError(vm, "Memory allocation failed for string concatenation.");
-                return VM_RUNTIME_ERROR;
-            }
-            memcpy(chars, bStr->chars, bStr->length);
-            memcpy(chars + bStr->length, cStr->chars, cStr->length);
-            chars[len] = '\0';
-
-            ObjectString* reStr = takeStringRaw(vm, chars, (int)len);
+            ObjectString* result = concatStringRaw(vm, bStr, cStr);
 
             pop(vm);
             pop(vm);
 
-            R(GET_ARG_A(instruction)) = OBJECT_VAL(reStr);
+            R(GET_ARG_A(instruction)) = OBJECT_VAL(result);
         }else{
             runtimeError(vm, "Operands must be two numbers or two strings.");
             return VM_RUNTIME_ERROR;

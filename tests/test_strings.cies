@@ -1,4 +1,31 @@
 import "assert.cies";
+import "gc";
+
+func testConcatenation() {
+    var left = "left";
+    var alias = left;
+    var result = left + "right";
+
+    assert.eq(result, "leftright", "String concatenation");
+    assert.eq(left, "left", "String concatenation keeps the left operand immutable");
+    assert.eq(alias, "left", "String concatenation keeps aliases unchanged");
+    assert.eq("value=" + 42, "value=42", "String concatenation converts the right operand");
+    assert.eq(42 + "!", "42!", "String concatenation converts the left operand");
+    assert.eq("" + "", "", "String concatenation handles empty operands");
+
+    var values = {};
+    values[result] = 7;
+    assert.eq(values["leftright"], 7, "Concatenated strings retain a valid hash");
+
+    var oldThreshold = gc.threshold();
+    var growing = "";
+    for (var i = 0; i < 64; i++) {
+        gc.threshold(0);
+        growing = growing + "x";
+    }
+    gc.threshold(oldThreshold);
+    assert.eq(growing.len(), 64, "String concatenation remains valid across collections");
+}
 
 func testInterpolation() {
     var name = "Cieto";
@@ -69,6 +96,7 @@ func testReplace() {
     assert.eq("aaaa".replace("aa", "b"), "bb", "String replace non-overlapping matches");
 }
 
+testConcatenation();
 testInterpolation();
 testIndexingAndSlicing();
 testCaseAndTrim();
