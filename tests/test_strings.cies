@@ -31,6 +31,68 @@ func testInterpolation() {
     var name = "Cieto";
     var msg = "Hello, ${name}!";
     assert.eq(msg, "Hello, Cieto!", "String interpolation");
+    assert.eq("${name}", "Cieto", "Single-value string interpolation");
+
+    var trace = "";
+    func record(value) {
+        trace = trace + value;
+        return value;
+    }
+
+    var ordered = "${record(1)}${record(2)}${record(3)}";
+    assert.eq(ordered, "123", "String interpolation joins multiple values");
+    assert.eq(trace, "123", "String interpolation preserves evaluation order");
+
+    var values = {};
+    var key = "key-${name}-${42}-${true}";
+    values[key] = 9;
+    assert.eq(values["key-Cieto-42-true"], 9, "Interpolated strings retain a valid hash");
+
+    var tail = "tail";
+    var oldThreshold = gc.threshold();
+    func armGc(value) {
+        gc.threshold(0);
+        return value;
+    }
+    var collected = "a${name}b${armGc(tail)}";
+    gc.threshold(oldThreshold);
+    assert.eq(collected, "aCietobtail", "String interpolation remains valid across collection");
+}
+
+func testStringBuilder() {
+    var builder = StringBuilder();
+    assert.eq(builder.len(), 0, "String builder starts empty");
+    assert.eq(builder.string(), "", "Empty string builder creates an empty string");
+
+    var chained = builder.append("hello", " ").append("world");
+    assert.eq(chained, builder, "String builder append returns the receiver");
+    assert.eq(builder.len(), 11, "String builder tracks its length");
+    assert.eq(builder.string(), "hello world", "String builder joins appended strings");
+
+    builder.append("");
+    builder.append();
+    assert.eq(builder.string(), "hello world", "String builder ignores empty parts");
+
+    var snapshot = builder.string();
+    builder.append("!");
+    assert.eq(snapshot, "hello world", "String builder keeps completed strings immutable");
+    assert.eq(builder.string(), "hello world!", "String builder remains reusable");
+
+    var oldThreshold = gc.threshold();
+    var growing = StringBuilder();
+    for (var i = 0; i < 128; i++) {
+        gc.threshold(0);
+        growing.append("ab");
+    }
+    gc.threshold(0);
+    var collected = growing.string();
+    gc.threshold(oldThreshold);
+    assert.eq(growing.len(), 256, "String builder survives collection while growing");
+    assert.eq(collected.len(), 256, "String builder creates a string during collection");
+
+    var values = {};
+    values[collected] = 7;
+    assert.eq(values[growing.string()], 7, "String builder output retains a valid hash");
 }
 
 func testIndexingAndSlicing() {
@@ -98,6 +160,7 @@ func testReplace() {
 
 testConcatenation();
 testInterpolation();
+testStringBuilder();
 testIndexingAndSlicing();
 testCaseAndTrim();
 testSub();

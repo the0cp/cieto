@@ -82,6 +82,7 @@ static const char* opNames[] = {
     "OP_FILL_LIST",
     "OP_SLICE",
     "OP_TO_STRING",
+    "OP_CONCAT",
 
     "OP_IMPORT",
 
@@ -319,6 +320,7 @@ void dasmInstruction(Chunk* chunk, int offset, GlobalEnv* globals){
         case OP_FILL_LIST:
         case OP_SLICE:
         case OP_TO_STRING:
+        case OP_CONCAT:
         case OP_DEFER:
         case OP_SYSTEM:
         case OP_PRINT:

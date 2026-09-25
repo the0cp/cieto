@@ -162,7 +162,7 @@ void initVM(VM* vm, int argc, const char* argv[]){
     vm->errOutput.write = defaultEWrite;
     vm->errOutput.userData = NULL;
 
-    registerPrelude(vm);
+    registerPrelude(vm, &vm->globals);
 }
 
 void freeVM(VM* vm){
@@ -428,6 +428,7 @@ static InterpreterStatus run(VM* vm){
         [OP_SYSTEM]         = &&DO_OP_SYSTEM,
 
         [OP_TO_STRING]      = &&DO_OP_TO_STRING,
+        [OP_CONCAT]         = &&DO_OP_CONCAT,
 
         [OP_CALL]           = &&DO_OP_CALL,
         [OP_PREP_INVOKE]    = &&DO_OP_PREP_INVOKE,
@@ -690,6 +691,28 @@ static InterpreterStatus run(VM* vm){
         }
     } DISPATCH();
 
+    DO_OP_CONCAT:
+    {
+        int a = GET_ARG_A(instruction);
+        int firstReg = GET_ARG_B(instruction);
+        int count = GET_ARG_C(instruction);
+        const Value* parts = &R(firstReg);
+
+        for(int i = 0; i < count; i++){
+            if(!IS_STRING(parts[i])){
+                runtimeError(vm, "Concatenation operands must be strings.");
+                return VM_RUNTIME_ERROR;
+            }
+        }
+
+        ObjectString* result = concatStringsRaw(vm, parts, count);
+        if(result == NULL){
+            runtimeError(vm, "Concatenated string is too long.");
+            return VM_RUNTIME_ERROR;
+        }
+        R(a) = OBJECT_VAL(result);
+    } DISPATCH();
+
     DO_OP_NOT: {
         Value b = R(GET_ARG_B(instruction));
         R(GET_ARG_A(instruction)) = BOOL_VAL(!isTruthy(b));
@@ -755,7 +778,13 @@ static InterpreterStatus run(VM* vm){
             ObjectString* cStr = IS_STRING(c) ? AS_STRING(c) : toString(vm, c);
             vm->stackTop[-1] = OBJECT_VAL(cStr);
 
-            ObjectString* result = concatStringRaw(vm, bStr, cStr);
+            ObjectString* result = concatStringsRaw(vm, vm->stackTop - 2, 2);
+            if(result == NULL){
+                pop(vm);
+                pop(vm);
+                runtimeError(vm, "Concatenated string is too long.");
+                return VM_RUNTIME_ERROR;
+            }
 
             pop(vm);
             pop(vm);

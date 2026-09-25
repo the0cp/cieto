@@ -2221,7 +2221,7 @@ static void handleLiteral(Compiler* compiler, ExprDesc* expr,  bool canAssign){
 static void handleString(Compiler* compiler, ExprDesc* expr, bool canAssign){
     ExprDesc tmpExpr;
     int partCnt = 0;
-    int resReg = getFreeReg(compiler);
+    int firstReg = getFreeReg(compiler);
 
     while(compiler->parser.cur.type != TOKEN_STRING_END && compiler->parser.cur.type != TOKEN_EOF){
         if(compiler->parser.cur.type == TOKEN_INTERPOLATION_CONTENT){
@@ -2267,14 +2267,7 @@ static void handleString(Compiler* compiler, ExprDesc* expr, bool canAssign){
             free(unescaped_chars);
             int idx = makeConstant(compiler, OBJECT_VAL(str));
             initExpr(&tmpExpr, EXPR_K, idx);
-            if(partCnt == 0){
-                expr2Reg(compiler, &tmpExpr, resReg);
-                reserveReg(compiler, 1);
-            }else{
-                expr2NextReg(compiler, &tmpExpr);
-                emitABC(compiler, OP_ADD, resReg, resReg, tmpExpr.data.loc.index);
-                freeRegs(compiler, 1);
-            }
+            expr2NextReg(compiler, &tmpExpr);
             advance(compiler);
         }else{
             consume(compiler, TOKEN_INTERPOLATION_START, "Expect string or interpolation.");
@@ -2287,16 +2280,6 @@ static void handleString(Compiler* compiler, ExprDesc* expr, bool canAssign){
                 tmpExpr.data.loc.index, 
                 0
             );
-
-            if(partCnt == 0){
-                if(tmpExpr.data.loc.index != resReg){
-                    emitABC(compiler, OP_MOVE, resReg, tmpExpr.data.loc.index, 0);
-                    freeExpr(compiler, &tmpExpr);
-                }
-            }else{
-                emitABC(compiler, OP_ADD, resReg, resReg, tmpExpr.data.loc.index);
-                freeExpr(compiler, &tmpExpr);
-            }
             consume(compiler, TOKEN_INTERPOLATION_END, "Expect '}' after interpolation expression.");
         }
         partCnt++;
@@ -2308,7 +2291,11 @@ static void handleString(Compiler* compiler, ExprDesc* expr, bool canAssign){
         int idx = makeConstant(compiler, OBJECT_VAL(copyString(compiler->vm, "", 0)));
         initExpr(expr, EXPR_K, idx);
     }else{
-        initExpr(expr, EXPR_REG, resReg);
+        if(partCnt > 1){
+            emitABC(compiler, OP_CONCAT, firstReg, firstReg, partCnt);
+            freeRegs(compiler, partCnt - 1);
+        }
+        initExpr(expr, EXPR_REG, firstReg);
     }
 }
 

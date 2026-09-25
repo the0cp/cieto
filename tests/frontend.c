@@ -471,6 +471,31 @@ static int testMoveElimination(void){
     return 0;
 }
 
+static int testStringInterpolation(void){
+    const char* source =
+        "var left = 1;"
+        "var right = 2;"
+        "if (\"a${left}b${right}c\" != \"a1b2c\") 0();";
+    VM vm;
+    initVM(&vm, 0, NULL);
+
+    ObjectFunc* script = compile(&vm, source, "string_interpolation.cies");
+    if(script == NULL || chunkCountOp(&script->chunk, OP_CONCAT) != 1 ||
+       chunkCountOp(&script->chunk, OP_ADD) != 0){
+        fprintf(stderr, "String interpolation was not encoded as one concatenation.\n");
+        freeVM(&vm);
+        return 1;
+    }
+    if(interpret(&vm, source, "string_interpolation.cies") != VM_OK){
+        fprintf(stderr, "String interpolation did not execute correctly.\n");
+        freeVM(&vm);
+        return 1;
+    }
+
+    freeVM(&vm);
+    return 0;
+}
+
 static int testMethodInvocation(void){
     const char* source =
         "var xs = []; xs.push(1); var push = xs.push; push(2);";
@@ -519,7 +544,7 @@ static int testMethodInvocation(void){
 int main(void){
     if(testScanner() != 0 || testDiagnostic() != 0 ||
        testCompilerLimits() != 0 || testMoveElimination() != 0 ||
-       testMethodInvocation() != 0){
+       testStringInterpolation() != 0 || testMethodInvocation() != 0){
         return 1;
     }
 

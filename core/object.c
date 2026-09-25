@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
@@ -103,19 +104,47 @@ ObjectString* takeStringRaw(VM* vm, char* chars, int length){
     return string;
 }
 
-ObjectString* concatStringRaw(VM* vm, ObjectString* left, ObjectString* right){
-    int length = (int)(left->length + right->length);
-    uint64_t hash = 0;
+ObjectString* concatStringsRaw(VM* vm, const Value* parts, int count){
+    size_t length = 0;
+    for(int i = 0; i < count; i++){
+        size_t partLength = AS_STRING(parts[i])->length;
+        if(partLength > (size_t)INT_MAX - length){
+            return NULL;
+        }
+        length += partLength;
+    }
 
-    ObjectString* str = allocString(vm, length, hash);
+    ObjectString* result = allocString(vm, (int)length, 0);
+    char* dest = result->chars;
 
-    memcpy(str->chars, left->chars, left->length);
-    memcpy(str->chars + left->length, right->chars, right->length);
-    str->chars[length] = '\0';
+    for(int i = 0; i < count; i++){
+        ObjectString* part = AS_STRING(parts[i]);
+        memcpy(dest, part->chars, part->length);
+        dest += part->length;
+    }
 
-    str->hash = hashString(str->chars, length, vm->hash_seed);
+    result->chars[length] = '\0';
+    result->hash = hashString(result->chars, (int)length, vm->hash_seed);
+    return result;
+}
 
-    return str;
+ObjectStringBuilder* newStringBuilder(VM* vm){
+    ObjectStringBuilder* builder = (ObjectStringBuilder*)reallocate(
+        vm,
+        NULL,
+        0,
+        sizeof(ObjectStringBuilder)
+    );
+
+    builder->obj.type = OBJECT_STRING_BUILDER;
+    builder->obj.isMarked = false;
+    builder->length = 0;
+    builder->capacity = 0;
+    builder->chars = NULL;
+
+    builder->obj.next = vm->objects;
+    vm->objects = (Object*)builder;
+    return builder;
 }
 
 ObjectList* newList(VM* vm){
@@ -389,6 +418,14 @@ void freeObject(VM* vm, Object* object){
             reallocate(vm, object, sizeof(ObjectIterator), 0);
             break;
         }
+        case OBJECT_STRING_BUILDER:{
+            ObjectStringBuilder* builder = (ObjectStringBuilder*)object;
+            if(builder->chars != NULL){
+                reallocate(vm, builder->chars, (size_t)builder->capacity + 1, 0);
+            }
+            reallocate(vm, object, sizeof(ObjectStringBuilder), 0);
+            break;
+        }
     }
 }
 
@@ -483,6 +520,10 @@ void objectWrite(Value value, Writer* writer){
 
         case OBJECT_ITERATOR:
             writerWCString(writer, "<iterator>");
+            break;
+
+        case OBJECT_STRING_BUILDER:
+            writerWCString(writer, "<string builder>");
             break;
     }
 }

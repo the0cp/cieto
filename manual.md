@@ -1120,6 +1120,26 @@ var all_source_files = fs.list(search);
 
 Certain built-in types have methods attached to them automatically.
 
+### String Builder
+
+Use `StringBuilder()` when a string is assembled incrementally, especially in a loop. Appending grows one reusable buffer instead of creating a new String for every step.
+
+```javascript
+var builder = StringBuilder();
+
+for (var i = 0; i < 1000; i++) {
+    builder.append("ab");
+}
+
+var text = builder.string();
+```
+
+- `.append(strings...)`: Appends zero or more Strings and returns the builder.
+
+- `.len()`: Returns the current length.
+
+- `.string()`: Returns an immutable String snapshot. The builder remains usable.
+
 ### List Methods
 
 Available on any List object (e.g., `[1, 2]`).

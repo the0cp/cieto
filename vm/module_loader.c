@@ -328,6 +328,7 @@ static InterpreterStatus loadScriptModule(
 
     GlobalEnv* prevGlobal = vm->curGlobal;
     vm->curGlobal = &module->members;
+    registerPrelude(vm, &module->members);
 
     ObjectFunc* func = compile(vm, source, spec->chars);
 

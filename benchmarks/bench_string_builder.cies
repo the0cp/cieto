@@ -1,0 +1,18 @@
+import "harness.cies";
+
+func work(size) {
+    var builder = StringBuilder();
+    for (var i = 0; i < size; i++) {
+        builder.append("ab");
+    }
+    return builder.string().len();
+}
+
+var size = 200000;
+var expected = 400000;
+if (harness.smoke()) {
+    size = 1000;
+    expected = 2000;
+}
+
+harness.run("string_builder", work, size, expected);

@@ -151,6 +151,7 @@ static void traceRef(VM* vm, Object* object){
         case OBJECT_STRING:
         case OBJECT_CFUNC:  
         case OBJECT_FILE:
+        case OBJECT_STRING_BUILDER:
             break;
     }
 }

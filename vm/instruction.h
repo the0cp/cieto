@@ -121,6 +121,7 @@ typedef enum{
     OP_FILL_LIST,
     OP_SLICE,
     OP_TO_STRING,
+    OP_CONCAT,      // R[A] <= concat(R[B], ..., R[B+C-1])
 
     OP_IMPORT,
 

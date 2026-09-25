@@ -57,6 +57,10 @@ typedef void (*HostCFunc)(CieCall* call, void* userData);
 #define IS_ITERATOR(value)      (IS_OBJECT(value) && OBJECT_TYPE(value) == OBJECT_ITERATOR)
 #define AS_ITERATOR(value)      ((ObjectIterator*)AS_OBJECT(value))
 
+#define IS_STRING_BUILDER(value) \
+    (IS_OBJECT(value) && OBJECT_TYPE(value) == OBJECT_STRING_BUILDER)
+#define AS_STRING_BUILDER(value) ((ObjectStringBuilder*)AS_OBJECT(value))
+
 typedef enum{
     OBJECT_STRING,
     OBJECT_LIST,
@@ -71,6 +75,7 @@ typedef enum{
     OBJECT_BOUND_METHOD,
     OBJECT_FILE,
     OBJECT_ITERATOR,
+    OBJECT_STRING_BUILDER,
 }ObjectType;
 
 typedef struct Object{
@@ -91,7 +96,16 @@ ObjectString* takeString(VM* vm, char* chars, int length);
 
 ObjectString* copyStringRaw(VM* vm, const char* chars, int len);
 ObjectString* takeStringRaw(VM* vm, char* chars, int length);
-ObjectString* concatStringRaw(VM* vm, ObjectString* left, ObjectString* right);
+ObjectString* concatStringsRaw(VM* vm, const Value* parts, int count);
+
+typedef struct ObjectStringBuilder{
+    Object obj;
+    int length;
+    int capacity;
+    char* chars;
+}ObjectStringBuilder;
+
+ObjectStringBuilder* newStringBuilder(VM* vm);
 
 typedef struct ObjectList{
     Object obj;

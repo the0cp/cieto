@@ -6,6 +6,7 @@
 
 #include "methods/list.h"
 #include "methods/string.h"
+#include "methods/string_builder.h"
 
 #include "modules/fs.h"
 #include "modules/path.h"
@@ -125,6 +126,21 @@ static CFunc findFileMethod(ObjectString* name){
     return NULL;
 }
 
+static CFunc findStringBuilderMethod(ObjectString* name){
+    if(name->length == 3 && memcmp(name->chars, "len", 3) == 0){
+        return stringBuilderLen;
+    }
+    if(name->length == 6){
+        if(memcmp(name->chars, "append", 6) == 0){
+            return stringBuilderAppend;
+        }
+        if(memcmp(name->chars, "string", 6) == 0){
+            return stringBuilderString;
+        }
+    }
+    return NULL;
+}
+
 static CFunc findIteratorMethod(ObjectString* name){
     if(name->length != 7){
         return NULL;
@@ -151,9 +167,13 @@ CFunc findBuiltinMethod(Value receiver, ObjectString* name){
     if(IS_ITERATOR(receiver)){
         return findIteratorMethod(name);
     }
+    if(IS_STRING_BUILDER(receiver)){
+        return findStringBuilderMethod(name);
+    }
     return NULL;
 }
 
-void registerPrelude(VM* vm){
-    defineCFunc(vm, &vm->globals, "iter", iterNative);
+void registerPrelude(VM* vm, GlobalEnv* env){
+    defineCFunc(vm, env, "iter", iterNative);
+    defineCFunc(vm, env, "StringBuilder", stringBuilderNative);
 }
