@@ -28,7 +28,7 @@ int main(void){
 
     CieStatus status = cie_vm_eval(vm,
         "var result = hostAdd(20, 22);\n"
-        "print result;\n",
+        "print(result);\n",
         "<native_function>"
     );
 

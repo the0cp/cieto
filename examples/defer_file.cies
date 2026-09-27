@@ -15,5 +15,5 @@ func writeLog(path) {
 var out = "examples" / "data" / "generated.log";
 writeLog(out);
 
-print "wrote ${out}";
-print fs.read(out);
+print("wrote ${out}");
+print(fs.read(out));

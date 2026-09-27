@@ -87,8 +87,6 @@ static const char* opNames[] = {
     "OP_IMPORT",
 
     "OP_FOREACH",
-
-    "OP_PRINT",
 };
 
 int getLine(const Chunk* chunk, int offset){
@@ -323,7 +321,6 @@ void dasmInstruction(Chunk* chunk, int offset, GlobalEnv* globals){
         case OP_CONCAT:
         case OP_DEFER:
         case OP_SYSTEM:
-        case OP_PRINT:
             dasmABC(opName, instruction);
             break;
 

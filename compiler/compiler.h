@@ -170,8 +170,6 @@ static bool checkType(Compiler* compiler, TokenType type);
 static bool match(Compiler* compiler, TokenType type);
 static void sync(Compiler* compiler);
 
-static void printStmt(Compiler* compiler);
-
 static void ifStmt(Compiler* compiler);
 
 static void whileStmt(Compiler* compiler);

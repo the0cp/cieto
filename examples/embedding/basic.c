@@ -12,7 +12,7 @@ int main(void){
 
     CieStatus status = cie_vm_eval(vm,
         "var name = \"Cieto\";\n"
-        "print \"Hello from ${name}!\";\n",
+        "print(\"Hello from ${name}!\");\n",
         "<basic>"
     );
 

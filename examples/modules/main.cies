@@ -4,8 +4,8 @@ import "stats.cies";
 
 var scores = [88, 91, 73, 100, 95, 84];
 
-print "scores: ${scores}";
-print "sum: ${stats.sum(scores)}";
-print "mean: ${stats.mean(scores)}";
-print "min: ${stats.min(scores)}";
-print "max: ${stats.max(scores)}";
+print("scores: ${scores}");
+print("sum: ${stats.sum(scores)}");
+print("mean: ${stats.mean(scores)}");
+print("min: ${stats.min(scores)}");
+print("max: ${stats.max(scores)}");

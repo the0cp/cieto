@@ -22,7 +22,6 @@ method,     TOKEN_METHOD
 var,        TOKEN_VAR
 if,         TOKEN_IF
 null,       TOKEN_NULL
-print,      TOKEN_PRINT
 return,     TOKEN_RETURN
 this,       TOKEN_THIS
 true,       TOKEN_TRUE

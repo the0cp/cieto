@@ -6,6 +6,9 @@ Cieto source files generally use the `.cies` extension. The language syntax is i
 
 Statements must be terminated with a semicolon `;`.
 
+`print(value)` is a prelude function rather than a language statement. It writes
+one value followed by a newline and returns `null`.
+
 ## Comments
 
 Cieto supports two types of comments:
@@ -53,7 +56,7 @@ Example:
 
 ```javascript
 var name = "Cieto";
-print "Hello, ${name}!"; 
+print("Hello, ${name}!");
 # Output: Hello, Cieto!
 ```
 
@@ -93,9 +96,9 @@ var dict = {
     true: "Verified"
 };
 
-print dict["name"]; # Output: Cieto
-print dict["version"]; # Output: 1
-print dict["status"]; # Output: ready
+print(dict["name"]); # Output: Cieto
+print(dict["version"]); # Output: 1
+print(dict["status"]); # Output: ready
 dict["new_key"] = 100;
 ```
 
@@ -133,8 +136,8 @@ Example:
 
 ```javascript
 var a = 15;
-print ++a;      # Output: 16 (a is 16)
-print a++;      # Output: 16 (a becomes 17)
+print(++a);      # Output: 16 (a is 16)
+print(a++);      # Output: 16 (a becomes 17)
 
 class Box { 
   Val = 0;
@@ -169,8 +172,8 @@ Example:
 
 ```javascript
 var age = 20;
-print "Age: " + age;  # Output: "Age: 20"
-print 100 + "%";      # Output: "100%"
+print("Age: " + age);  # Output: "Age: 20"
+print(100 + "%");      # Output: "100%"
 ```
 
 ### Path Concatenation
@@ -205,7 +208,7 @@ Example:
 ```javascript
 var age = 20;
 var status = age >= 18 ? "Adult" : "Minor";
-print status; # Output: Adult
+print(status); # Output: Adult
 ```
 
 ### Logic
@@ -238,7 +241,7 @@ func double(n) {
     return n * 2; 
 }
 
-print double(addOne(5)); # Output: 12
+print(double(addOne(5))); # Output: 12
 
 5 |> addOne |> double |> println; # Output: 12
 println <| double <| addOne <| 5; # Output: 12
@@ -268,8 +271,8 @@ Example:
 
 ```javascript
 var list = [10, 20, 30]; 
-print list[0]; # 10 
-print list[-1]; # 30
+print(list[0]); # 10
+print(list[-1]); # 30
 ```
 
 #### Slicing
@@ -293,20 +296,20 @@ Examples:
 var s = "Hello World";
 
 # Basic Slicing
-print s[0:5]; # "Hello" 
-print s[6:]; # "World" (6 to end) 
-print s[:5]; # "Hello" (Beginning to 5)
+print(s[0:5]); # "Hello"
+print(s[6:]); # "World" (6 to end)
+print(s[:5]); # "Hello" (Beginning to 5)
 
 # Negative Indices
-print s[-5:]; # "World"
+print(s[-5:]); # "World"
 
 # Step & Reversal
-print s[::2]; # "HloWrd" (Every 2nd char) 
-print s[::-1]; # "dlroW olleH" (Reverse string)
+print(s[::2]); # "HloWrd" (Every 2nd char)
+print(s[::-1]); # "dlroW olleH" (Reverse string)
 
 # Lists work the same way
 var list = [1, 2, 3, 4, 5]; 
-print list[1:4]; # [2, 3, 4]
+print(list[1:4]); # [2, 3, 4]
 ```
 
 ## Control Flow & Statements
@@ -357,7 +360,7 @@ Standard C-style for loop with initialization, condition, and increment clauses.
 
 ```javascript
 for(var i = 0; i < 10; i = i + 1){
-    print i;
+    print(i);
 }
 ```
 
@@ -377,7 +380,7 @@ Example:
 # Iterating over a List
 var nums = [10, 20, 30];
 for (var n : nums) {
-    print n;
+    print(n);
 }
 
 #{
@@ -390,13 +393,13 @@ for (var n : nums) {
 # Iterating over a Map (Keys)
 var dict = { "a": 1, "b": 2 }; 
 for (var key : dict) { 
-    print key; # Prints "a" or "b" 
+    print(key); # Prints "a" or "b"
 }
 
 # Iterating over a File (Lazy Line-by-Line)
 var f = fs.open("log.txt", "r");
 for (var line : f) { 
-    print line; 
+    print(line);
 } 
 f.close();
 ```
@@ -416,10 +419,10 @@ Example:
 ```javascript
 switch(value){
     case 1, 2 => {
-        print "One or Two";
+        print("One or Two");
     }
-    case 3 => print "Three";
-    default => print "Other";
+    case 3 => print("Three");
+    default => print("Other");
 }
 ```
 
@@ -449,7 +452,7 @@ func processFile() {
     # even if an error occurs later.
     defer f.close();
     
-    defer print "Function finishing...";
+    defer print("Function finishing...");
 
     f.write("Log entry");
 }
@@ -498,9 +501,9 @@ Non-zero: Indicates an error or a specific status code returned by the command.
 Example:
 
 ```javascript
-print "Listing files:";
+print("Listing files:");
 $> ls -la
-print "Done.";
+print("Done.");
 ```
 
 ## Iterators
@@ -536,7 +539,7 @@ Example:
 ```javascript
 var iterator = iter([1, null, 3]);
 while (iterator.advance()) {
-    print iterator.current();
+    print(iterator.current());
 }
 ```
 
@@ -571,8 +574,8 @@ func makeCounter(){
 }
 
 var counter = makeCounter();
-print counter(); # 1
-print counter(); # 2
+print(counter()); # 1
+print(counter()); # 2
 ```
 
 ### Anonymous Functions
@@ -583,7 +586,7 @@ Example:
 
 ```javascript
 var square = func(x) { return x * x; };
-print square(5); # Output: 25
+print(square(5)); # Output: 25
 ```
 
 ## Class & Objects
@@ -716,8 +719,8 @@ var PI = 3.14;
 ```javascript
 import "math.cies"; # Creates variable 'math'
 
-print math.PI;
-print math.add(10, 20);
+print(math.PI);
+print(math.add(10, 20));
 ```
 
 ### Automatic Module Naming
@@ -1299,7 +1302,7 @@ cie_vm_register_native(vm, "hostAdd", hostAdd, NULL);
 After registration, Cieto code can call it like an ordinary function:
 
 ```javascript
-print hostAdd(20, 22);
+print(hostAdd(20, 22));
 ```
 
 `userData` is borrowed by Cieto. The host must keep it valid for as long as the registered function may be called.

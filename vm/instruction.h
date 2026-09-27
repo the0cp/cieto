@@ -126,8 +126,6 @@ typedef enum{
     OP_IMPORT,
 
     OP_FOREACH,
-
-    OP_PRINT,
 } OpCode;
 
 #define SIZE_OP     8

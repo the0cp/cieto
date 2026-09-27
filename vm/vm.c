@@ -498,8 +498,6 @@ static InterpreterStatus run(VM* vm){
         [OP_METHOD]         = &&DO_OP_METHOD,
         [OP_FIELD]          = &&DO_OP_FIELD,
 
-        [OP_PRINT]          = &&DO_OP_PRINT,
-        
         [OP_DEFER]          = &&DO_OP_DEFER,
         [OP_SYSTEM]         = &&DO_OP_SYSTEM,
 
@@ -1028,13 +1026,6 @@ static InterpreterStatus run(VM* vm){
             ? dividend
             : fmod(dividend, divisor);
         R(GET_ARG_A(instruction)) = NUM_VAL(result);
-    } DISPATCH();
-
-    DO_OP_PRINT:
-    {
-        int a = GET_ARG_A(instruction);
-        valueWrite(R(a), &vm->output);
-        vmWriteCString(vm, "\n");
     } DISPATCH();
 
     DO_OP_JMP:

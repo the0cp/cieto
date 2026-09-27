@@ -12,8 +12,8 @@ func fib(n) {
 var start = time.steady();
 
 for (var i = 0; i <= 12; i++) {
-    print "fib(${i}) = ${fib(i)}";
+    print("fib(${i}) = ${fib(i)}");
 }
 
 var elapsed = time.steady() - start;
-print "elapsed: ${elapsed}s";
+print("elapsed: ${elapsed}s");

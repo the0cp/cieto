@@ -4,21 +4,21 @@ import "os";
 # Check if actual equals expected
 func eq(actual, expected, msg) {
     if (actual != expected) {
-        print "FAIL: " + msg;
-        print "  Expected: " + expected;
-        print "  Actual:   " + actual;
+        print("FAIL: " + msg);
+        print("  Expected: " + expected);
+        print("  Actual:   " + actual);
         os.exit(1);
     } else {
-        print "PASS: " + msg;
+        print("PASS: " + msg);
     }
 }
 
 # Check if condition is true
 func ok(condition, msg) {
     if (!condition) {
-        print "FAIL: " + msg;
+        print("FAIL: " + msg);
         os.exit(1);
     } else {
-        print "PASS: " + msg;
+        print("PASS: " + msg);
     }
 }

@@ -37,13 +37,13 @@ for (var word : words) {
     counts[word]++;
 }
 
-print "Total words: ${total}";
-print "cieto: ${counts["cieto"]}";
-print "vm: ${counts["vm"]}";
-print "language: ${counts["language"]}";
-print "";
-print "Selected counts:";
+print("Total words: ${total}");
+print("cieto: ${counts["cieto"]}");
+print("vm: ${counts["vm"]}");
+print("language: ${counts["language"]}");
+print("");
+print("Selected counts:");
 var interesting = ["cieto", "vm", "language", "modules", "classes", "examples"];
 for (var key : interesting) {
-    print "  ${key} => ${counts[key]}";
+    print("  ${key} => ${counts[key]}");
 }

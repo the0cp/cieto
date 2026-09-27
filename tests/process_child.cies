@@ -7,4 +7,4 @@ assert.eq(os.argv[3], "say\"hi", "process child quoted arg");
 assert.eq(os.argv[4], "tail\\", "process child trailing slash arg");
 assert.eq(os.argv[5], "", "process child empty arg");
 
-print "process child stdout";
+print("process child stdout");

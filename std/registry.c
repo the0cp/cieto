@@ -173,7 +173,19 @@ CFunc findBuiltinMethod(Value receiver, ObjectString* name){
     return NULL;
 }
 
+static Value printNative(VM* vm, int argCount, Value* args){
+    if(argCount != 1){
+        runtimeError(vm, "print expects exactly one argument.");
+        return NULL_VAL;
+    }
+
+    valueWrite(args[0], &vm->output);
+    vmWriteCString(vm, "\n");
+    return NULL_VAL;
+}
+
 void registerPrelude(VM* vm, GlobalEnv* env){
+    defineCFunc(vm, env, "print", printNative);
     defineCFunc(vm, env, "iter", iterNative);
     defineCFunc(vm, env, "StringBuilder", stringBuilderNative);
 }

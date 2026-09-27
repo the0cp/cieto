@@ -49,18 +49,18 @@ var notes = [
     Note("Tiny Stdlib", "The standard modules cover files, paths, time, glob, os, and gc.")
 ];
 
-print "Cieto mini tour";
-print "started at ${time.fmt(time.clock())}";
-print "";
+print("Cieto mini tour");
+print("started at ${time.fmt(time.clock())}");
+print("");
 
 for (var note : notes) {
     var id = newId();
-    print "${id} | ${note.Title} | ${note.wordCount()} words";
-    print "  slug: ${note.slug()}";
-    print "  preview: ${note.preview()}";
+    print("${id} | ${note.Title} | ${note.wordCount()} words");
+    print("  slug: ${note.slug()}");
+    print("  preview: ${note.preview()}");
 }
 
-print "";
-print "portable path join with '/': ${"examples" / "data" / "notes.txt"}";
-print "slicing demo: ${"register-vm"[0:8]}";
-print "reverse slicing: ${"Cieto"[::-1]}";
+print("");
+print("portable path join with '/': ${"examples" / "data" / "notes.txt"}");
+print("slicing demo: ${"register-vm"[0:8]}");
+print("reverse slicing: ${"Cieto"[::-1]}");

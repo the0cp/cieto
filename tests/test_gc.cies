@@ -20,7 +20,7 @@ func createChain(depth) {
     return head;
 }
 
-print "Starting allocation loop...";
+print("Starting allocation loop...");
 
 # Allocate large amount of memory to trigger GC multiple times
 for (var i = 0; i < 50; i++) {
@@ -29,7 +29,7 @@ for (var i = 0; i < 50; i++) {
     chain = null; 
 }
 
-print "Allocation loop finished.";
+print("Allocation loop finished.");
 
 # Closure Retention Test
 # Objects captured by closures must NOT be collected

@@ -2,7 +2,7 @@
 
 import "gc";
 
-print "initial gc mode: ${gc.mode()}";
+print("initial gc mode: ${gc.mode()}");
 
 var oldThreshold = gc.threshold();
 gc.mode("manual");
@@ -14,12 +14,12 @@ for (var i = 0; i < 1000; i++) {
 }
 
 var stats = gc.stats();
-print "mode: ${stats["mode"]}";
-print "bytes: ${stats["bytes"]}";
-print "next: ${stats["next"]}";
-print "threshold: ${stats["threshold"]}";
-print "manual collect: ${gc.collect()}";
+print("mode: ${stats["mode"]}");
+print("bytes: ${stats["bytes"]}");
+print("next: ${stats["next"]}");
+print("threshold: ${stats["threshold"]}");
+print("manual collect: ${gc.collect()}");
 
 gc.threshold(oldThreshold);
 gc.mode("auto");
-print "restored gc mode: ${gc.mode()}";
+print("restored gc mode: ${gc.mode()}");

@@ -131,8 +131,8 @@ static bool tokenIs(Token token, TokenType type, const char* text){
 static int testScanner(void){
     Scanner left;
     Scanner right;
-    initScanner(&left, "var left = 1;\nprint left;");
-    initScanner(&right, "print \"right\";");
+    initScanner(&left, "var left = 1;\nprint(left);");
+    initScanner(&right, "print(\"right\");");
 
     Token token = scan(&left);
     if(!tokenIs(token, TOKEN_VAR, "var") ||
@@ -143,7 +143,7 @@ static int testScanner(void){
     }
 
     token = scan(&right);
-    if(!tokenIs(token, TOKEN_PRINT, "print") ||
+    if(!tokenIs(token, TOKEN_IDENTIFIER, "print") ||
        token.span.start.line != 1 || token.span.start.column != 1){
         fprintf(stderr, "Unexpected first token from right scanner.\n");
         return 1;
@@ -157,12 +157,13 @@ static int testScanner(void){
     }
 
     token = scan(&right);
-    if(token.type != TOKEN_STRING_START || token.span.start.column != 7){
+    if(token.type != TOKEN_LEFT_PAREN || token.span.start.column != 6){
         fprintf(stderr, "Right scanner lost its position.\n");
         return 1;
     }
 
-    while((token = scan(&left)).type != TOKEN_PRINT){
+    while((token = scan(&left)).type != TOKEN_IDENTIFIER ||
+          !tokenIs(token, TOKEN_IDENTIFIER, "print")){
         if(token.type == TOKEN_EOF || token.type == TOKEN_ERROR){
             fprintf(stderr, "Left scanner did not reach the second line.\n");
             return 1;
@@ -210,13 +211,13 @@ static int testDiagnostic(void){
         failed = 1;
     }
 
-    const char* deferSource = "func test() { defer print ; }";
+    const char* deferSource = "func test() { defer print( ; }";
     capture = (DiagCapture){.expectedSource = deferSource};
     func = compileWithDiag(&vm, deferSource, "defer.cies", NULL, &sink);
     if(func != NULL || capture.count != 1 || vm.compiler != NULL ||
        !capture.sourceMatches ||
        strcmp(capture.srcName, "defer.cies") != 0 ||
-       capture.span.start.line != 1 || capture.span.start.column != 27 ||
+       capture.span.start.line != 1 || capture.span.start.column != 28 ||
        strcmp(capture.message, "Expect expression") != 0){
         fprintf(stderr, "Nested defer error did not cleanly finish compilation.\n");
         failed = 1;

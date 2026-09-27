@@ -9,4 +9,4 @@ assert.eq(_exit_code, 7, "$> exit 7 exit code");
 $> echo cieto-system-test
 assert.eq(_exit_code, 0, "$> echo exit code");
 
-print "system command tests done";
+print("system command tests done");

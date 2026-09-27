@@ -35,9 +35,10 @@ int main(void){
     cie_vm_set_error_output(vm, bufferWrite, &err);
 
     CieStatus status = cie_vm_eval(vm,
-        "print \"hello\";\n"
-        "print 42;\n"
-        "print [1, true, null];\n",
+        "var output = print;\n"
+        "output(\"hello\");\n"
+        "print(42);\n"
+        "print([1, true, null]);\n",
         "<output_test>"
     );
 
@@ -53,7 +54,7 @@ int main(void){
         return 1;
     }
 
-    status = cie_vm_eval(vm, "print 1 / 0;\n", "<error_test>");
+    status = cie_vm_eval(vm, "print(1 / 0);\n", "<error_test>");
 
     if(status != CIE_STATUS_RUNTIME_ERROR){
         fprintf(stderr, "Expected runtime error, got %s.\n", cie_status_string(status));

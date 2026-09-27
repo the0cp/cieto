@@ -13,10 +13,10 @@ search.Exclude = ["data/*"];
 var files = fs.list(search);
 var count = 0;
 
-print "Cieto source files under examples/:";
+print("Cieto source files under examples/:");
 for (var file : files) {
     count++;
-    print "  ${file} | base=${path.base(file)} | ext=${path.ext(file)}";
+    print("  ${file} | base=${path.base(file)} | ext=${path.ext(file)}");
 }
 
-print "found ${count} .cies files";
+print("found ${count} .cies files");

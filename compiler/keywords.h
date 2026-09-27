@@ -1,4 +1,4 @@
-/* C code produced by gperf version 3.2.1 */
+/* C code produced by gperf version 3.1 */
 /* Command-line: gperf -L C -E -t -C -G -N findKeyword -H keywordHash keywords.gperf  */
 /* Computed positions: -k'1-2' */
 
@@ -41,14 +41,14 @@ struct Keyword {
 #include <string.h>
 enum
   {
-    TOTAL_KEYWORDS = 22,
+    TOTAL_KEYWORDS = 21,
     MIN_WORD_LENGTH = 2,
     MAX_WORD_LENGTH = 8,
     MIN_HASH_VALUE = 2,
-    MAX_HASH_VALUE = 30
+    MAX_HASH_VALUE = 26
   };
 
-/* maximum key range = 29, duplicates = 0 */
+/* maximum key range = 25, duplicates = 0 */
 
 #ifdef __GNUC__
 __inline
@@ -64,50 +64,46 @@ keywordHash (str, len)
 {
   static const unsigned char asso_values[] =
     {
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 15, 25,  5,
-       0, 10,  5, 31,  5,  0, 31, 31,  0,  5,
-       0,  0,  0, 31,  0, 10, 15,  0,  5, 10,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31, 31, 31, 31, 31,
-      31, 31, 31, 31, 31, 31
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 15,  0,  5,
+       0, 10,  5, 27,  5,  0, 27, 27,  0,  5,
+       0,  0, 27, 27,  0, 10, 15,  0,  5, 10,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
+      27, 27, 27, 27, 27, 27
     };
   return len + asso_values[(unsigned char)str[1]] + asso_values[(unsigned char)str[0]];
 }
 
-#if (defined __GNUC__ && __GNUC__ + (__GNUC_MINOR__ >= 6) > 4) || (defined __clang__ && __clang_major__ >= 3)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-#endif
 static const struct Keyword wordlist[] =
   {
     {""}, {""},
-#line 31 "keywords.gperf"
+#line 30 "keywords.gperf"
     {"or",         TOKEN_OR},
     {""},
 #line 24 "keywords.gperf"
     {"null",       TOKEN_NULL},
-#line 25 "keywords.gperf"
-    {"print",      TOKEN_PRINT},
+#line 31 "keywords.gperf"
+    {"break",      TOKEN_BREAK},
     {""},
 #line 23 "keywords.gperf"
     {"if",         TOKEN_IF},
@@ -117,43 +113,37 @@ static const struct Keyword wordlist[] =
     {"func",       TOKEN_FUNC},
 #line 16 "keywords.gperf"
     {"class",      TOKEN_CLASS},
-#line 36 "keywords.gperf"
+#line 35 "keywords.gperf"
     {"import",     TOKEN_IMPORT},
     {""},
-#line 33 "keywords.gperf"
+#line 32 "keywords.gperf"
     {"continue",   TOKEN_CONTINUE},
 #line 17 "keywords.gperf"
     {"else",       TOKEN_ELSE},
-#line 37 "keywords.gperf"
+#line 36 "keywords.gperf"
     {"defer",      TOKEN_DEFER},
-#line 26 "keywords.gperf"
+#line 25 "keywords.gperf"
     {"return",     TOKEN_RETURN},
-#line 35 "keywords.gperf"
+#line 34 "keywords.gperf"
     {"default",    TOKEN_DEFAULT},
-#line 30 "keywords.gperf"
-    {"and",        TOKEN_AND},
-#line 28 "keywords.gperf"
-    {"true",       TOKEN_TRUE},
 #line 29 "keywords.gperf"
+    {"and",        TOKEN_AND},
+#line 27 "keywords.gperf"
+    {"true",       TOKEN_TRUE},
+#line 28 "keywords.gperf"
     {"while",      TOKEN_WHILE},
 #line 21 "keywords.gperf"
     {"method",     TOKEN_METHOD},
     {""},
 #line 22 "keywords.gperf"
     {"var",        TOKEN_VAR},
-#line 27 "keywords.gperf"
+#line 26 "keywords.gperf"
     {"this",       TOKEN_THIS},
 #line 18 "keywords.gperf"
     {"false",      TOKEN_FALSE},
-#line 34 "keywords.gperf"
-    {"switch",     TOKEN_SWITCH},
-    {""}, {""}, {""},
-#line 32 "keywords.gperf"
-    {"break",      TOKEN_BREAK}
+#line 33 "keywords.gperf"
+    {"switch",     TOKEN_SWITCH}
   };
-#if (defined __GNUC__ && __GNUC__ + (__GNUC_MINOR__ >= 6) > 4) || (defined __clang__ && __clang_major__ >= 3)
-#pragma GCC diagnostic pop
-#endif
 
 const struct Keyword *
 findKeyword (str, len)
@@ -172,5 +162,5 @@ findKeyword (str, len)
             return &wordlist[key];
         }
     }
-  return (struct Keyword *) 0;
+  return 0;
 }

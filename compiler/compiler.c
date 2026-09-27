@@ -1156,9 +1156,7 @@ static void endScope(Compiler* compiler){
 }
 
 static void stmt(Compiler* compiler){
-    if(match(compiler, TOKEN_PRINT))
-        printStmt(compiler);
-    else if(match(compiler, TOKEN_IF))
+    if(match(compiler, TOKEN_IF))
         ifStmt(compiler);
     else if(match(compiler, TOKEN_WHILE))
         whileStmt(compiler);
@@ -1215,7 +1213,6 @@ static void sync(Compiler* compiler){
             case TOKEN_FOR:
             case TOKEN_IF:
             case TOKEN_WHILE:
-            case TOKEN_PRINT:
             case TOKEN_RETURN:
                 return;
             default:
@@ -1223,15 +1220,6 @@ static void sync(Compiler* compiler){
         }
         advance(compiler);
     }
-}
-
-static void printStmt(Compiler* compiler){
-    ExprDesc expr;
-    expression(compiler, &expr);
-    expr2NextReg(compiler, &expr);
-    emitABC(compiler, OP_PRINT, expr.data.loc.index, 0, 0);
-    freeExpr(compiler, &expr);
-    consume(compiler, TOKEN_SEMICOLON, "Expect ';' after a expression");
 }
 
 static void ifStmt(Compiler* compiler){

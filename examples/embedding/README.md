@@ -26,7 +26,7 @@ cie_vm_register_native(vm, "hostAdd", hostAdd, NULL);
 Cieto can then call it as a normal function:
 
 ```javascript
-print hostAdd(20, 22);
+print(hostAdd(20, 22));
 ```
 
 ## `call_script.c`

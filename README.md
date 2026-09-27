@@ -47,11 +47,11 @@ var topics = [" Register VM ", " Pipe Operator ", " Path Join "];
 
 for (var topic : topics) {
     var name = topic |> slug |> badge;
-    print next(name);
+    print(next(name));
 }
 
-print "path: ${"examples" / "data" / "sample.txt"}";
-print "slice: ${"register-vm"[0:8]}, reverse: ${"Cieto"[::-1]}";
+print("path: ${"examples" / "data" / "sample.txt"}");
+print("slice: ${"register-vm"[0:8]}, reverse: ${"Cieto"[::-1]}");
 
 var quoted = process.run({
     "argv": ["cieto", "examples/argv_echo.cies", "declarative"],
@@ -59,10 +59,10 @@ var quoted = process.run({
     "env": {"MODE": "release"},
     "timeout": 5
 });
-print quoted["stdout"];
+print(quoted["stdout"]);
 
 $> echo hello from the host shell
-print "shell exit code = ${_exit_code}";
+print("shell exit code = ${_exit_code}");
 ```
 
 ## Examples

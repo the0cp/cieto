@@ -3,7 +3,7 @@
 
 import "os";
 
-print "Argument count: ${os.argv.size()}";
+print("Argument count: ${os.argv.size()}");
 for (var i = 0; i < os.argv.size(); i++) {
-    print "argv[${i}] = ${os.argv[i]}";
+    print("argv[${i}] = ${os.argv[i]}");
 }

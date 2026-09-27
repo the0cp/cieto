@@ -14,7 +14,7 @@ int main(void){
     const char* source =
         "import \"os\";\n"
         "os.exit(7);\n"
-        "print \"This line must not execute.\";\n";
+        "print(\"This line must not execute.\");\n";
 
     CieStatus status = cie_vm_eval(
         vm,

@@ -7,7 +7,7 @@ func smoke() {
 
 func verify(name, actual, expected) {
     if (actual != expected) {
-        print "benchmark ${name} failed: expected ${expected}, got ${actual}";
+        print("benchmark ${name} failed: expected ${expected}, got ${actual}");
         os.exit(1);
     }
 }
@@ -29,7 +29,7 @@ func run(name, work, size, expected) {
         var elapsedUs = (time.steady() - start) * 1000000;
 
         verify(name, result, expected);
-        print "{\"benchmark\":\"${name}\",\"mode\":\"${mode}\",\"size\":${size},\"iteration\":${i + 1},\"elapsed_us\":${elapsedUs},\"verified\":true}";
+        print("{\"benchmark\":\"${name}\",\"mode\":\"${mode}\",\"size\":${size},\"iteration\":${i + 1},\"elapsed_us\":${elapsedUs},\"verified\":true}");
     }
 
     return result;

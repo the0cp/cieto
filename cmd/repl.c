@@ -11,7 +11,7 @@
 
 static const char* keywords[] = {
     "and", "break", "class", "continue", "default", "else", "false",
-    "for", "func", "if", "import", "method", "null", "or", "print",
+    "for", "func", "if", "import", "method", "null", "or",
     "return", "switch", "this", "true", "var", "while", "system",
     NULL
 };
