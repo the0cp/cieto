@@ -21,6 +21,8 @@
 #define R(n) (frame->base[(n)])
 #define K(n) (frame->closure->func->chunk.constants.values[(n)])
 
+static bool callMethod(VM* vm, Value receiver, Object* method, int argCnt, Value* initializedTop);
+
 #ifdef _WIN32
 static int normalizeSystemStatus(int status){
     return status;
@@ -173,7 +175,7 @@ void freeVM(VM* vm){
     vm->globalCnt = 0;
     vm->curGlobal = NULL;
     vm->openUpvalues = NULL;
-    FREE_ARRAY(vm, CFunc, vm->pendingInvokes, vm->pendingInvokeCapacity);
+    FREE_ARRAY(vm, InvokeTarget, vm->pendingInvokes, vm->pendingInvokeCapacity);
     vm->pendingInvokes = NULL;
     vm->pendingInvokeCnt = 0;
     vm->pendingInvokeCapacity = 0;
@@ -318,12 +320,7 @@ static bool checkAccess(VM* vm, ObjectClass* instanceKlass, ObjectString* fieldN
     return false;
 }
 
-static Value bindBuiltinMethod(VM* vm, Value receiver, ObjectString* name){
-    CFunc func = findBuiltinMethod(receiver, name);
-    if(func == NULL){
-        return NULL_VAL;
-    }
-
+static Value bindBuiltinMethod(VM* vm, Value receiver, CFunc func){
     ObjectCFunc* cfuncObj = newCFunc(vm, func);
     push(vm, OBJECT_VAL(cfuncObj));
     ObjectBoundMethod* bound = newBoundMethod(vm, receiver, (Object*)cfuncObj);
@@ -331,35 +328,82 @@ static Value bindBuiltinMethod(VM* vm, Value receiver, ObjectString* name){
     return OBJECT_VAL(bound);
 }
 
-static bool getProperty(VM* vm, Value receiver, ObjectString* key, Value* result){
+typedef struct Property{
+    Value value;
+    Object* method;
+    CFunc builtin;
+}Property;
+
+static bool resolveProperty(
+    VM* vm,
+    Value receiver,
+    ObjectString* key,
+    PropertyCache* cache,
+    Property* property
+){
+    property->value = NULL_VAL;
+    property->method = NULL;
+    property->builtin = NULL;
+
     if(IS_INSTANCE(receiver)){
         ObjectInstance* instance = AS_INSTANCE(receiver);
-        if(tableGet(vm, &instance->fields, OBJECT_VAL(key), result)){
+
+        if(cache != NULL && cache->klass == OBJECT_VAL(instance->klass)){
+            if(cache->fieldSlot >= 0 &&
+               (size_t)cache->fieldSlot < instance->fieldCount){
+                if(!checkAccess(vm, instance->klass, key)){
+                    runtimeError(vm, "Cannot access private field '%s'.", key->chars);
+                    return false;
+                }
+                property->value = instance->fields[cache->fieldSlot];
+                return true;
+            }
+
+            property->value = cache->method;
+            if(IS_CLOSURE(cache->method) || IS_CFUNC(cache->method)){
+                property->method = AS_OBJECT(cache->method);
+            }
+            return true;
+        }
+
+        int fieldSlot = classGetFieldSlot(vm, instance->klass, key);
+        if(fieldSlot >= 0 && (size_t)fieldSlot < instance->fieldCount){
             if(!checkAccess(vm, instance->klass, key)){
                 runtimeError(vm, "Cannot access private field '%s'.", key->chars);
                 return false;
             }
+
+            if(cache != NULL){
+                cache->klass = OBJECT_VAL(instance->klass);
+                cache->method = NULL_VAL;
+                cache->fieldSlot = fieldSlot;
+            }
+            property->value = instance->fields[fieldSlot];
             return true;
         }
 
         Value method;
-        if(tableGet(vm, &instance->klass->methods, OBJECT_VAL(key), &method)){
-            if(IS_CLOSURE(method) ||
-               (IS_OBJECT(method) && AS_OBJECT(method)->type == OBJECT_CFUNC)){
-                *result = OBJECT_VAL(newBoundMethod(vm, receiver, AS_OBJECT(method)));
-            }else{
-                *result = method;
-            }
-            return true;
+        if(!tableGet(vm, &instance->klass->methods, OBJECT_VAL(key), &method)){
+            runtimeError(vm, "Undefined field '%s'.", key->chars);
+            return false;
         }
 
-        runtimeError(vm, "Undefined field '%s'.", key->chars);
-        return false;
+        if(cache != NULL){
+            cache->klass = OBJECT_VAL(instance->klass);
+            cache->method = method;
+            cache->fieldSlot = -1;
+        }
+
+        property->value = method;
+        if(IS_CLOSURE(method) || IS_CFUNC(method)){
+            property->method = AS_OBJECT(method);
+        }
+        return true;
     }
 
     if(IS_MODULE(receiver)){
         ObjectModule* module = AS_MODULE(receiver);
-        if(globalGetName(&module->members, key, result)){
+        if(globalGetName(&module->members, key, &property->value)){
             return true;
         }
 
@@ -367,14 +411,46 @@ static bool getProperty(VM* vm, Value receiver, ObjectString* key, Value* result
         return false;
     }
 
-    Value bound = bindBuiltinMethod(vm, receiver, key);
-    if(!IS_NULL(bound)){
-        *result = bound;
+    property->builtin = findBuiltinMethod(receiver, key);
+    if(property->builtin != NULL){
         return true;
     }
 
     runtimeError(vm, "Property '%s' not found on object.", key->chars);
     return false;
+}
+
+static bool getProperty(
+    VM* vm,
+    Value receiver,
+    ObjectString* key,
+    PropertyCache* cache,
+    Value* result
+){
+    Property property;
+    if(!resolveProperty(vm, receiver, key, cache, &property)){
+        return false;
+    }
+
+    if(property.builtin != NULL){
+        *result = bindBuiltinMethod(vm, receiver, property.builtin);
+    }else if(property.method != NULL){
+        *result = OBJECT_VAL(newBoundMethod(vm, receiver, property.method));
+    }else{
+        *result = property.value;
+    }
+    return true;
+}
+
+static PropertyCache* propertyCacheAt(CallFrame* frame){
+    Chunk* chunk = &frame->closure->func->chunk;
+    size_t instructionIndex = (size_t)(frame->ip - chunk->code - 1);
+    int cacheIndex = chunk->propertyCacheMap[instructionIndex];
+    if(cacheIndex < 0){
+        return NULL;
+    }
+    assert(cacheIndex < chunk->propertyCacheCount);
+    return &chunk->propertyCaches[cacheIndex];
 }
 
 static InterpreterStatus run(VM* vm){
@@ -431,7 +507,7 @@ static InterpreterStatus run(VM* vm){
         [OP_CONCAT]         = &&DO_OP_CONCAT,
 
         [OP_CALL]           = &&DO_OP_CALL,
-        [OP_PREP_INVOKE]    = &&DO_OP_PREP_INVOKE,
+        [OP_PRE_INVOKE]     = &&DO_OP_PRE_INVOKE,
         [OP_INVOKE]         = &&DO_OP_INVOKE,
 
         [OP_IMPORT]         = &&DO_OP_IMPORT,
@@ -641,7 +717,9 @@ static InterpreterStatus run(VM* vm){
 
         ObjectString* key = AS_STRING(keyVal);
         Value result;
-        if(!getProperty(vm, receiver, key, &result)) return VM_RUNTIME_ERROR;
+        if(!getProperty(vm, receiver, key, propertyCacheAt(frame), &result)){
+            return VM_RUNTIME_ERROR;
+        }
         R(GET_ARG_A(instruction)) = result;
         
     } DISPATCH();
@@ -659,11 +737,28 @@ static InterpreterStatus run(VM* vm){
 
         if(IS_INSTANCE(instanceVal)){
             ObjectInstance* instance = AS_INSTANCE(instanceVal);
+            PropertyCache* cache = propertyCacheAt(frame);
+            int fieldSlot = -1;
+            if(cache != NULL && cache->klass == OBJECT_VAL(instance->klass)){
+                fieldSlot = cache->fieldSlot;
+            }else{
+                fieldSlot = classGetFieldSlot(vm, instance->klass, key);
+                if(cache != NULL){
+                    cache->klass = OBJECT_VAL(instance->klass);
+                    cache->method = NULL_VAL;
+                    cache->fieldSlot = fieldSlot;
+                }
+            }
+
+            if(fieldSlot < 0 || (size_t)fieldSlot >= instance->fieldCount){
+                runtimeError(vm, "Undefined field '%s'.", key->chars);
+                return VM_RUNTIME_ERROR;
+            }
             if(!checkAccess(vm, instance->klass, key)){
                 runtimeError(vm, "Cannot access private field '%s'.", key->chars);
                 return VM_RUNTIME_ERROR;
             }
-            tableSet(vm, &instance->fields, OBJECT_VAL(key), newVal);
+            instance->fields[fieldSlot] = newVal;
         }else if(IS_MODULE(instanceVal)){
             ObjectModule* module = AS_MODULE(instanceVal);
 
@@ -995,7 +1090,7 @@ static InterpreterStatus run(VM* vm){
         frame = &vm->frames[vm->frameCount - 1];
     } DISPATCH();
 
-    DO_OP_PREP_INVOKE:
+    DO_OP_PRE_INVOKE:
     {
         int a = GET_ARG_A(instruction);
         Value receiver = R(a);
@@ -1010,22 +1105,39 @@ static InterpreterStatus run(VM* vm){
             vm->pendingInvokeCapacity = GROW_CAPACITY(oldCapacity);
             vm->pendingInvokes = GROW_ARRAY(
                 vm,
-                CFunc,
+                InvokeTarget,
                 vm->pendingInvokes,
                 oldCapacity,
                 vm->pendingInvokeCapacity
             );
         }
 
-        CFunc builtin = findBuiltinMethod(receiver, AS_STRING(name));
-        if(builtin == NULL){
-            Value callee;
-            if(!getProperty(vm, receiver, AS_STRING(name), &callee)){
+        CFunc builtin = NULL;
+        if(!IS_INSTANCE(receiver)){
+            builtin = findBuiltinMethod(receiver, AS_STRING(name));
+        }
+
+        InvokeTarget target = {
+            .method = NULL,
+            .builtin = builtin
+        };
+        if(target.builtin == NULL){
+            Property property;
+            if(!resolveProperty(
+                vm,
+                receiver,
+                AS_STRING(name),
+                propertyCacheAt(frame),
+                &property
+            )){
                 return VM_RUNTIME_ERROR;
             }
-            R(a) = callee;
+            target.method = property.method;
+            if(target.method == NULL){
+                R(a) = property.value;
+            }
         }
-        vm->pendingInvokes[vm->pendingInvokeCnt++] = builtin;
+        vm->pendingInvokes[vm->pendingInvokeCnt++] = target;
     } DISPATCH();
 
     DO_OP_INVOKE:
@@ -1038,7 +1150,7 @@ static InterpreterStatus run(VM* vm){
             runtimeError(vm, "Method call has no pending target.");
             return VM_RUNTIME_ERROR;
         }
-        CFunc builtin = vm->pendingInvokes[--vm->pendingInvokeCnt];
+        InvokeTarget target = vm->pendingInvokes[--vm->pendingInvokeCnt];
 
         Value* callTop = &R(a + argCount + 1);
         for(Value* slot = callTop; slot < oldStackTop; slot++){
@@ -1046,16 +1158,21 @@ static InterpreterStatus run(VM* vm){
         }
         vm->stackTop = callTop;
 
-        if(builtin != NULL){
-            Value result = builtin(vm, argCount, &R(a + 1));
+        if(target.builtin != NULL){
+            Value result = target.builtin(vm, argCount, &R(a + 1));
             if(vm->hadRuntimeError) return VM_RUNTIME_ERROR;
 
             R(a) = result;
             vm->stackTop = frame->base + frame->closure->func->maxRegSlots;
         }else{
-            Value callee = R(a);
             int frameCnt = vm->frameCount;
-            if(!callValue(vm, callee, argCount, oldStackTop)){
+            bool called;
+            if(target.method != NULL){
+                called = callMethod(vm, R(a), target.method, argCount, oldStackTop);
+            }else{
+                called = callValue(vm, R(a), argCount, oldStackTop);
+            }
+            if(!called){
                 return VM_RUNTIME_ERROR;
             }
 
@@ -1157,8 +1274,16 @@ static InterpreterStatus run(VM* vm){
         ObjectString* name = AS_STRING(nameVal);
         Value method = R(c);
 
+        if(!classAddMethod(vm, klass, name, method)){
+            runtimeError(
+                vm,
+                "Member '%s' is already defined on class '%s'.",
+                name->chars,
+                klass->name->chars
+            );
+            return VM_RUNTIME_ERROR;
+        }
         AS_CLOSURE(method)->func->fieldOwner = klass;
-        tableSet(vm, &klass->methods, OBJECT_VAL(name), method);
     } DISPATCH();
 
     DO_OP_FIELD:
@@ -1173,7 +1298,16 @@ static InterpreterStatus run(VM* vm){
             runtimeError(vm, "Field name must be a string.");
             return VM_RUNTIME_ERROR;
         }
-        tableSet(vm, &klass->fields, nameVal, R(c));
+        ObjectString* name = AS_STRING(nameVal);
+        if(!classAddField(vm, klass, name, R(c))){
+            runtimeError(
+                vm,
+                "Member '%s' is already defined on class '%s'.",
+                name->chars,
+                klass->name->chars
+            );
+            return VM_RUNTIME_ERROR;
+        }
     } DISPATCH();
 
     DO_OP_BUILD_LIST:
@@ -1601,15 +1735,31 @@ static bool call(VM* vm, ObjectClosure* closure, int argCnt, Value* initializedT
     return true;
 }
 
+static bool callMethod(VM* vm, Value receiver, Object* method, int argCnt, Value* initializedTop){
+    vm->stackTop[-argCnt - 1] = receiver;
+    if(method->type != OBJECT_CFUNC){
+        return call(vm, AS_CLOSURE(OBJECT_VAL(method)), argCnt, initializedTop);
+    }
+
+    CFunc cfunc = AS_CFUNC(OBJECT_VAL(method));
+    Value result = cfunc(vm, argCnt, vm->stackTop - argCnt);
+    if(vm->hadRuntimeError){
+        return false;
+    }
+
+    vm->stackTop -= argCnt + 1;
+    push(vm, result);
+    return true;
+}
+
 static bool callValue(VM* vm, Value callee, int argCnt, Value* initializedTop){
     if(IS_OBJECT(callee)){
         switch(OBJECT_TYPE(callee)){
             case OBJECT_CLASS:{
                 ObjectClass* klass = AS_CLASS(callee);
                 vm->stackTop[-argCnt - 1] = OBJECT_VAL(newInstance(vm, klass));
-                Value initializer;
-                if(tableGet(vm, &klass->methods, OBJECT_VAL(vm->initString), &initializer)){
-                    if (!call(vm, AS_CLOSURE(initializer), argCnt, initializedTop)){
+                if(!IS_NULL(klass->initializer)){
+                    if (!call(vm, AS_CLOSURE(klass->initializer), argCnt, initializedTop)){
                         return false;
                     }
                 }else if(argCnt != 0){  // no initializer found but got arguments
@@ -1620,22 +1770,13 @@ static bool callValue(VM* vm, Value callee, int argCnt, Value* initializedTop){
             }
             case OBJECT_BOUND_METHOD:{
                 ObjectBoundMethod* bound = AS_BOUND_METHOD(callee);
-                vm->stackTop[-argCnt -1] = bound->receiver;
-                Object* method = bound->method;
-                if(method->type == OBJECT_CFUNC){
-                    CFunc cfunc = AS_CFUNC(OBJECT_VAL(method));
-                    Value result = cfunc(vm, argCnt, vm->stackTop - argCnt);
-
-                    if(vm->hadRuntimeError){
-                        return false;
-                    }
-
-                    vm->stackTop -= (argCnt + 1); 
-                    push(vm, result);
-                    return true;
-                }else{
-                    return call(vm, AS_CLOSURE(OBJECT_VAL(method)), argCnt, initializedTop);
-                }
+                return callMethod(
+                    vm,
+                    bound->receiver,
+                    bound->method,
+                    argCnt,
+                    initializedTop
+                );
             }
             case OBJECT_CLOSURE:
                 return call(vm, AS_CLOSURE(callee), argCnt, initializedTop);

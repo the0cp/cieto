@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Cieto VERSION 0.2.0 LANGUAGES C)
+project(Cieto VERSION 0.3.0 LANGUAGES C)
 
 include(GNUInstallDirs)
 
@@ -177,6 +177,15 @@ target_link_libraries(cieto_runtime_numeric_tests
         libcieto
 )
 
+add_executable(cieto_runtime_oop_tests
+    tests/runtime_oop.c
+)
+
+target_link_libraries(cieto_runtime_oop_tests
+    PRIVATE
+        libcieto
+)
+
 add_executable(cieto_runtime_fs_tests
     tests/runtime_fs.c
 )
@@ -317,6 +326,11 @@ if(BUILD_TESTING)
         NAME cieto_runtime_numeric
         COMMAND $<TARGET_FILE:cieto_runtime_numeric_tests>
     )
+
+    add_test(
+        NAME cieto_runtime_oop
+        COMMAND $<TARGET_FILE:cieto_runtime_oop_tests>
+    )
 endif()
 
 add_custom_target(check
@@ -331,6 +345,7 @@ add_custom_target(check
         cieto_frontend_tests
         cieto_runtime_fs_tests
         cieto_runtime_numeric_tests
+        cieto_runtime_oop_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 

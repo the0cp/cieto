@@ -206,17 +206,24 @@ typedef struct ObjectClass{
     Object obj;
     ObjectString* name;
     HashTable methods;
-    HashTable fields;
+    HashTable fieldSlots;
+    ValueArray fieldDefaults;
+    Value initializer;
 }ObjectClass;
 
 typedef struct ObjectInstance{
     Object obj;
     ObjectClass* klass;
-    HashTable fields;
+    Value* fields;
+    size_t fieldCount;
 }ObjectInstance;
 
 ObjectClass* newClass(VM* vm, ObjectString* name);
+int classGetFieldSlot(VM* vm, ObjectClass* klass, ObjectString* name);
+bool classAddField(VM* vm, ObjectClass* klass, ObjectString* name, Value value);
+bool classAddMethod(VM* vm, ObjectClass* klass, ObjectString* name, Value method);
 ObjectInstance* newInstance(VM* vm, ObjectClass* klass);
+bool instanceGetField(VM* vm, ObjectInstance* instance, ObjectString* name, Value* value);
 
 typedef struct ObjectBoundMethod{
     Object obj;

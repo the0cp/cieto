@@ -103,7 +103,7 @@ typedef enum{
     OP_JMP_IF_FALSE,  // R[A] is condition
     OP_JMP_IF_TRUE,   // R[A] is condition
     OP_CALL,
-    OP_PREP_INVOKE,   // prepare R[A].K[C] before evaluating call arguments
+    OP_PRE_INVOKE,    // resolve R[A].K[C] before evaluating call arguments
     OP_INVOKE,        // R[A] <= prepared call(R[A+1], ..., R[A+B])
     OP_TAILCALL,
     OP_DEFER,

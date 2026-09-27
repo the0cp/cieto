@@ -1,6 +1,6 @@
 #ifndef CIETO_VERSION_H
 #define CIETO_VERSION_H
 
-#define CIETO_VERSION "0.2.0"
+#define CIETO_VERSION "0.3.0"
 
 #endif // CIETO_VERSION_H

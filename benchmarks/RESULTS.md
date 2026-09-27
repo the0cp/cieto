@@ -1,19 +1,20 @@
 # Benchmark Results
 
-Last updated: 2026-09-20
+Last updated: 2026-09-27
 
 ## Current Results
 
 | Benchmark | Median (ms) | Range (ms) |
 |---|---:|---:|
-| arithmetic_loop | 181.631 | 178.385–184.735 |
-| equality_hot | 140.458 | 136.112–150.001 |
-| function_calls | 141.809 | 130.770–213.571 |
-| gc_churn | 13.812 | 12.777–14.102 |
-| list_ops | 56.182 | 49.831–58.948 |
-| map_ops | 55.487 | 49.930–61.599 |
-| object_dispatch | 288.120 | 269.109–311.841 |
-| string_ops | 91.120 | 83.449–94.646 |
+| arithmetic_loop | 174.591 | 167.975–176.569 |
+| equality_hot | 139.729 | 131.324–150.453 |
+| function_calls | 111.932 | 107.781–120.746 |
+| gc_churn | 11.899 | 11.766–12.953 |
+| list_ops | 48.365 | 46.806–51.814 |
+| map_ops | 37.987 | 36.209–40.721 |
+| object_dispatch | 139.497 | 133.389–165.569 |
+| string_ops | 79.080 | 74.363–82.842 |
+| string_builder | 6.104 | 5.543–7.069 |
 
 ## Previous Comparison
 
@@ -35,6 +36,8 @@ Last updated: 2026-09-20
 | numeric | Bytecode instructions | 566 | 532 | -6.01% |
 | calls | Instructions | 1,003,951,729 | 993,458,039 | -1.05% |
 | array | Instructions | 91,127,858 | 88,328,964 | -3.07% |
+| object dispatch | Time (ms) | 147.008 | 139.497 | -5.11% |
+| object dispatch | Callgrind Ir | 11,701,117,140 | 11,462,057,996 | -2.04% |
 
 ## Cross-Language Results
 
@@ -55,6 +58,14 @@ All values are median milliseconds.
 | file write, 20 × 64 KiB | 3.632 | 2.737 | 3.418 | 9.674 | 26.981 | 3.498 | 3.657 | 24.353 |
 
 `*` The C compiler moved the repeated `strstr` call out of the loop.
+
+## String Builder Comparison
+
+All values are median milliseconds per 1,500 appends.
+
+| Cieto `+` | Cieto Builder | C | Go Builder | Java JIT Builder | Java -Xint Builder | Python `+=` | Node `+=` |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1.937 | 0.052 | 0.004 | 0.006 | 0.007 | 0.326 | 0.242 | 0.010 |
 
 ## Startup Results
 

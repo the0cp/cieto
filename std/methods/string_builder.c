@@ -65,9 +65,7 @@ Value stringBuilderAppend(VM* vm, int argCount, Value* args){
     }
 
     builder->length = length;
-    if(builder->chars != NULL){
-        builder->chars[length] = '\0';
-    }
+    builder->chars[length] = '\0';
 
     return args[-1];
 }

@@ -102,6 +102,10 @@ static void traceRef(VM* vm, Object* object){
             markObject(vm, (Object*)func->name);
             markObject(vm, (Object*)func->srcName);
             markArray(vm, &func->chunk.constants);
+            for(int i = 0; i < func->chunk.propertyCacheCount; i++){
+                markValue(vm, func->chunk.propertyCaches[i].klass);
+                markValue(vm, func->chunk.propertyCaches[i].method);
+            }
             break;
         }
         case OBJECT_CLOSURE:{
@@ -127,13 +131,17 @@ static void traceRef(VM* vm, Object* object){
             ObjectClass* klass = (ObjectClass*)object;
             markObject(vm, (Object*)klass->name);
             markTable(vm, &klass->methods);
-            markTable(vm, &klass->fields);
+            markTable(vm, &klass->fieldSlots);
+            markArray(vm, &klass->fieldDefaults);
+            markValue(vm, klass->initializer);
             break;
         }
         case OBJECT_INSTANCE:{
             ObjectInstance* instance = (ObjectInstance*)object;
             markObject(vm, (Object*)instance->klass);
-            markTable(vm, &instance->fields);
+            for(size_t i = 0; i < instance->fieldCount; i++){
+                markValue(vm, instance->fields[i]);
+            }
             break;
         }
         case OBJECT_BOUND_METHOD:{
@@ -191,6 +199,10 @@ static void markRoots(VM* vm){
 
     for(ObjectUpvalue* upvalue = vm->openUpvalues; upvalue != NULL; upvalue = upvalue->next){
         markObject(vm, (Object*)upvalue);
+    }
+
+    for(int i = 0; i < vm->pendingInvokeCnt; i++){
+        markObject(vm, vm->pendingInvokes[i].method);
     }
 
     markGlobalEnv(vm, &vm->globals);

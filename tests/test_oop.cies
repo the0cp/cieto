@@ -1,4 +1,5 @@
 import "assert.cies";
+import "gc";
 
 class User {
     Name = "Anon";
@@ -14,10 +15,56 @@ method (u User) getAge() {
     return u.age;
 }
 
+method (u User) addAge(value) {
+    return u.age + value;
+}
+
 var u = User("Soyo", 18);
 
 assert.eq(u.Name, "Soyo", "Public field access");
 assert.eq(u.getAge(), 18, "Method accessing private field");
+assert.eq(u.addAge(u.getAge()), 36, "Nested method calls keep their receivers");
+
+var getAge = u.getAge;
+assert.eq(getAge(), 18, "Reading a method still creates a callable bound method");
+
+func collectArg(value) {
+    var threshold = gc.threshold();
+    gc.threshold(0);
+    var garbage = [value; 16];
+    gc.threshold(threshold);
+    return garbage[0];
+}
+
+u.init("Soyo", collectArg(19));
+assert.eq(u.getAge(), 19, "Method target survives collection during argument evaluation");
+
+var other = User("Other", 7);
+assert.eq(other.getAge(), 7, "Declared fields are copied per instance");
+assert.eq(u.getAge(), 19, "Updating one instance does not change another instance");
+
+class PrimaryMethod {}
+
+method (r PrimaryMethod) value() {
+    return 1;
+}
+
+func cachedValue(target) {
+    return target.value();
+}
+
+var primary = PrimaryMethod();
+assert.eq(cachedValue(primary), 1, "Inline cache stores a method");
+
+class AlternateMethod {}
+
+method (a AlternateMethod) value() {
+    return 3;
+}
+
+var alternate = AlternateMethod();
+assert.eq(cachedValue(alternate), 3, "Inline cache accepts a different receiver class");
+assert.eq(cachedValue(primary), 1, "Inline cache can return to a previous receiver class");
 
 class CallableField {
     Call = null;

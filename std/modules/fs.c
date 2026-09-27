@@ -461,19 +461,19 @@ static Value fs_listDir(VM* vm, int argCount, Value* args){
         ObjectInstance* instant = AS_INSTANCE(args[0]);
         Value val;
         
-        if(tableGet(vm, &instant->fields, OBJECT_VAL(copyString(vm, "Dir", 3)), &val) && IS_STRING(val)){
+        if(instanceGetField(vm, instant, copyString(vm, "Dir", 3), &val) && IS_STRING(val)){
             baseDir = AS_CSTRING(val);
         }
-        if(tableGet(vm, &instant->fields, OBJECT_VAL(copyString(vm, "Pattern", 7)), &val) && IS_STRING(val)){
+        if(instanceGetField(vm, instant, copyString(vm, "Pattern", 7), &val) && IS_STRING(val)){
             config.pattern = AS_CSTRING(val);
         }
-        if(tableGet(vm, &instant->fields, OBJECT_VAL(copyString(vm, "IgnoreCase", 10)), &val) && IS_BOOL(val)){
+        if(instanceGetField(vm, instant, copyString(vm, "IgnoreCase", 10), &val) && IS_BOOL(val)){
             config.ignoreCase = AS_BOOL(val);
         }
-        if(tableGet(vm, &instant->fields, OBJECT_VAL(copyString(vm, "Exclude", 7)), &val)){
+        if(instanceGetField(vm, instant, copyString(vm, "Exclude", 7), &val)){
             config.excludeVal = val;
         }
-        if(tableGet(vm, &instant->fields, OBJECT_VAL(copyString(vm, "Recursive", 9)), &val) && IS_BOOL(val)){
+        if(instanceGetField(vm, instant, copyString(vm, "Recursive", 9), &val) && IS_BOOL(val)){
             config.recursive = AS_BOOL(val);
         }
     }else{

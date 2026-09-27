@@ -495,13 +495,14 @@ static void unplugExpr(Compiler* compiler, ExprDesc* expr){
         {
             int objReg = expr->data.loc.index;
             int keyReg = emitPropertyKey(compiler, expr->data.loc.aux);
-            emitABC(
+            int instructionIndex = emitABC(
                 compiler, 
                 OP_GET_PROPERTY, 
                 objReg,
                 objReg,
                 keyReg
             );
+            addPropertyCache(compiler->vm, &compiler->func->chunk, instructionIndex);
             ExprDesc key;
             initExpr(&key, EXPR_REG, keyReg);
             freeExpr(compiler, &key);
@@ -635,13 +636,14 @@ static void storeVar(Compiler* compiler, ExprDesc* var, ExprDesc* val){
         {
             expr2NextReg(compiler, val);
             int keyReg = emitPropertyKey(compiler, var->data.loc.aux);
-            emitABC(
+            int instructionIndex = emitABC(
                 compiler, 
                 OP_SET_PROPERTY, 
                 var->data.loc.index, 
                 keyReg,
                 val->data.loc.index
             );
+            addPropertyCache(compiler->vm, &compiler->func->chunk, instructionIndex);
             ExprDesc propKey;
             initExpr(&propKey, EXPR_REG, keyReg);
             freeExpr(compiler, &propKey);
@@ -2363,13 +2365,14 @@ static void handleCall(Compiler* compiler, ExprDesc* expr, bool canAssign){
     if(expr->type == EXPR_PROP && expr->data.loc.aux <= MASK_C){
         int receiverReg = expr->data.loc.index;
         int nameConst = expr->data.loc.aux;
-        emitABC(
+        int instructionIndex = emitABC(
             compiler,
-            OP_PREP_INVOKE,
+            OP_PRE_INVOKE,
             receiverReg,
             0,
             nameConst
         );
+        addPropertyCache(compiler->vm, &compiler->func->chunk, instructionIndex);
         int argCount = parseCallArgs(compiler, receiverReg + 1);
         emitABC(compiler, OP_INVOKE, receiverReg, argCount, 0);
         freeRegs(compiler, argCount);

@@ -37,6 +37,11 @@ typedef struct CallFrame{
     int deferCnt;
 }CallFrame;
 
+typedef struct InvokeTarget{
+    Object* method;
+    CFunc builtin;
+}InvokeTarget;
+
 typedef struct GCStats{
     size_t count;
     size_t bytesBefore;
@@ -72,7 +77,7 @@ typedef struct VM{
     ObjectUpvalue* openUpvalues;    // descending locations
     CallFrame frames[FRAMES_MAX];
     int frameCount;
-    CFunc* pendingInvokes;
+    InvokeTarget* pendingInvokes;
     int pendingInvokeCnt;
     int pendingInvokeCapacity;
 

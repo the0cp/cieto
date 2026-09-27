@@ -281,27 +281,81 @@ ObjectClass* newClass(VM* vm, ObjectString* name){
 
     klass->name = name;
     initHashTable(&klass->methods);
-    initHashTable(&klass->fields);
+    initHashTable(&klass->fieldSlots);
+    initValueArray(&klass->fieldDefaults);
+    klass->initializer = NULL_VAL;
 
     return klass;
+}
+
+int classGetFieldSlot(VM* vm, ObjectClass* klass, ObjectString* name){
+    Value slot;
+    if(!tableGet(vm, &klass->fieldSlots, OBJECT_VAL(name), &slot)){
+        return -1;
+    }
+    return (int)AS_NUM(slot);
+}
+
+static bool classHasMember(VM* vm, ObjectClass* klass, ObjectString* name){
+    Value ignored;
+    Value key = OBJECT_VAL(name);
+    return tableGet(vm, &klass->fieldSlots, key, &ignored) ||
+           tableGet(vm, &klass->methods, key, &ignored);
+}
+
+bool classAddField(VM* vm, ObjectClass* klass, ObjectString* name, Value value){
+    if(classHasMember(vm, klass, name)){
+        return false;
+    }
+
+    int slot = (int)klass->fieldDefaults.count;
+    writeValueArray(vm, &klass->fieldDefaults, value);
+    tableSet(vm, &klass->fieldSlots, OBJECT_VAL(name), NUM_VAL(slot));
+    return true;
+}
+
+bool classAddMethod(VM* vm, ObjectClass* klass, ObjectString* name, Value method){
+    if(classHasMember(vm, klass, name)){
+        return false;
+    }
+
+    tableSet(vm, &klass->methods, OBJECT_VAL(name), method);
+    if(name == vm->initString){
+        klass->initializer = method;
+    }
+    return true;
 }
 
 ObjectInstance* newInstance(VM* vm, ObjectClass* klass){
     ObjectInstance* instance = (ObjectInstance*)reallocate(vm, NULL, 0, sizeof(ObjectInstance));
     instance->obj.type = OBJECT_INSTANCE;
     instance->obj.isMarked = false;
+    instance->klass = klass;
+    instance->fields = NULL;
+    instance->fieldCount = klass->fieldDefaults.count;
+
+    if(instance->fieldCount > 0){
+        instance->fields = reallocate(vm, NULL, 0, sizeof(Value) * instance->fieldCount);
+        memcpy(
+            instance->fields,
+            klass->fieldDefaults.values,
+            sizeof(Value) * instance->fieldCount
+        );
+    }
 
     instance->obj.next = vm->objects;
     vm->objects = (Object*)instance;
 
-    instance->klass = klass;
-    initHashTable(&instance->fields);
-
-    push(vm, OBJECT_VAL(instance));
-    tableMerge(vm, &klass->fields, &instance->fields);
-    pop(vm);
-
     return instance;
+}
+
+bool instanceGetField(VM* vm, ObjectInstance* instance, ObjectString* name, Value* value){
+    int slot = classGetFieldSlot(vm, instance->klass, name);
+    if(slot >= 0 && (size_t)slot < instance->fieldCount){
+        *value = instance->fields[slot];
+        return true;
+    }
+    return false;
 }
 
 ObjectBoundMethod* newBoundMethod(VM* vm, Value receiver, Object* method){
@@ -392,13 +446,14 @@ void freeObject(VM* vm, Object* object){
         case OBJECT_CLASS:{
             ObjectClass* klass = (ObjectClass*)object;
             freeHashTable(vm, &klass->methods);
-            freeHashTable(vm, &klass->fields);
+            freeHashTable(vm, &klass->fieldSlots);
+            freeValueArray(vm, &klass->fieldDefaults);
             reallocate(vm, object, sizeof(ObjectClass), 0);
             break;
         }
         case OBJECT_INSTANCE:{
             ObjectInstance* instance = (ObjectInstance*)object;
-            freeHashTable(vm, &instance->fields);
+            FREE_ARRAY(vm, Value, instance->fields, instance->fieldCount);
             reallocate(vm, object, sizeof(ObjectInstance), 0);
             break;
         }

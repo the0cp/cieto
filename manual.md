@@ -594,6 +594,8 @@ Cieto implements a unique flavor of Object-Oriented Programming (OOP) that separ
 
 The `class` block is strictly for defining data structures (fields) and their default values.
 
+Instances have a fixed set of fields: assigning to a field that was not declared by the class is a runtime error. Field and method names share one class namespace, so each name may be declared only once.
+
 ```javascript
 class Point{
     x = 0;
@@ -612,6 +614,8 @@ p.x = 10;
 ### Method Definition
 
 Methods are defined **outside** the class body using the `method` keyword. This syntax explicitly binds a function to a receiver type.
+
+Defining an existing class member again is a runtime error; Cieto does not silently replace fields or methods.
 
 **Syntax**: `method (receiver_name ClassName) MethodName(args...) { ... }`
 

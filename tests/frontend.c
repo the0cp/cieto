@@ -503,9 +503,10 @@ static int testMethodInvocation(void){
     initVM(&vm, 0, NULL);
 
     ObjectFunc* script = compile(&vm, source, "method_invocation.cies");
-    if(script == NULL || chunkCountOp(&script->chunk, OP_PREP_INVOKE) != 1 ||
+    if(script == NULL || chunkCountOp(&script->chunk, OP_PRE_INVOKE) != 1 ||
        chunkCountOp(&script->chunk, OP_INVOKE) != 1 ||
-       chunkCountOp(&script->chunk, OP_GET_PROPERTY) != 1){
+       chunkCountOp(&script->chunk, OP_GET_PROPERTY) != 1 ||
+       script->chunk.propertyCacheCount != 2){
         fprintf(stderr, "Method calls and bound method values were not encoded correctly.\n");
         freeVM(&vm);
         return 1;
@@ -527,10 +528,11 @@ static int testMethodInvocation(void){
 
     initVM(&vm, 0, NULL);
     script = compile(&vm, largeConstants.data, "large_constant_method.cies");
-    if(script == NULL || chunkCountOp(&script->chunk, OP_PREP_INVOKE) != 0 ||
+    if(script == NULL || chunkCountOp(&script->chunk, OP_PRE_INVOKE) != 0 ||
        chunkCountOp(&script->chunk, OP_INVOKE) != 0 ||
        chunkCountOp(&script->chunk, OP_GET_PROPERTY) != 1 ||
        chunkCountOp(&script->chunk, OP_CALL) != 1 ||
+       script->chunk.propertyCacheCount != 1 ||
        interpret(&vm, largeConstants.data, "large_constant_method.cies") != VM_OK){
         fprintf(stderr, "Large property constants did not use the safe call fallback.\n");
         freeVM(&vm);
@@ -541,10 +543,31 @@ static int testMethodInvocation(void){
     return 0;
 }
 
+static int testClosedClass(void){
+    const char* source =
+        "class User { Name = \"\"; }"
+        "var user = User();"
+        "user.Status = \"active\";";
+    VM vm;
+    initVM(&vm, 0, NULL);
+
+    InterpreterStatus status = interpret(&vm, source, "closed_class.cies");
+    bool rejected = status == VM_RUNTIME_ERROR &&
+                    strstr(vm.lastError, "Undefined field 'Status'.") != NULL;
+    freeVM(&vm);
+
+    if(!rejected){
+        fprintf(stderr, "Class instances accepted an undeclared field.\n");
+        return 1;
+    }
+    return 0;
+}
+
 int main(void){
     if(testScanner() != 0 || testDiagnostic() != 0 ||
        testCompilerLimits() != 0 || testMoveElimination() != 0 ||
-       testStringInterpolation() != 0 || testMethodInvocation() != 0){
+       testStringInterpolation() != 0 || testMethodInvocation() != 0 ||
+       testClosedClass() != 0){
         return 1;
     }
 

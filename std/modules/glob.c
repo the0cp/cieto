@@ -1,6 +1,7 @@
+#include <assert.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 
 #include "vm.h"
 #include "registry.h"
@@ -181,7 +182,9 @@ static void defineGlobField(VM* vm, ObjectClass* klass, const char* name, Value 
     ObjectString* key = copyString(vm, name, (int)strlen(name));
     push(vm, OBJECT_VAL(key));
 
-    tableSet(vm, &klass->fields, OBJECT_VAL(key), value);
+    bool added = classAddField(vm, klass, key, value);
+    assert(added);
+    (void)added;
 
     pop(vm);
     pop(vm);
